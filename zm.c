@@ -1229,7 +1229,7 @@ static void zm_printWorker(zm_Print *out, zm_Worker *w)
 
 	if (w->next) {
 		zm_iprint(out, "next (worker): %s-%lx\n",
-		              w->next->machine->name, w->next);
+		          w->next->machine->name, w->next);
 	} else {
 			zm_iprint(out, "next (worker): NULL\n");
 	}

@@ -701,70 +701,76 @@ continue exception (a child sub1).
 
 Example:
 
+	zm_State *sub2;
+
 	ZMTASKDEF(task3) ZMSTATES
 		zmstate 1:
-			printf("task3: init\n");
-			raise zmCONTINUE(0, "test", NULL) | 2;
+			printf("\t\ttask3: init\n");
+			printf("\t\ttask3: stop by raising continue (*)\n");
+			zmraise zmCONTINUE(0, "test", NULL) | 2;
 		zmstate 2:
-			printf("task3: term\n");
-			yield TERM
-	ZMEND			
+			printf("\t\ttask3: (*) unraised ... OK\n");
+		zmstate 3:
+			printf("\t\ttask3: no more to do ... term\n");
+			zmyield zmTERM;
+	ZMEND
 
 	ZMTASKDEF(task2) ZMSTATES
 		zmstate 1:{
-			printf("task2: init\n");
+			printf("\ttask2: init\n");
 			zm_State *s = zmNewSubTasklet(task3, NULL);
-			yield zmSUB(s) | 2;
+			zmyield zmSUB(s) | 2;
 		}
-		zmstate 2: 
-			printf("task2: term\n");
-			yield zmTERM;
-	ZMEND			
-
-	zm_State *sub2;
+		zmstate 2:
+			printf("\ttask2: term\n");
+			zmyield zmTERM;
+	ZMEND
 
 	ZMTASKDEF(task1) ZMSTATES
 		zmstate 1: {
 			printf("task1: init\n");
 			sub2 = zmNewSubTasklet(task2, NULL);
-			yield zmSUB(s) | 2 | zmCATCH(3);
+			zmyield zmSUB(sub2) | 2 | zmCATCH(3);
 		}
-		zmstate 2: 
+		zmstate 2:
 			printf("task1: term\n");
-			yield zmTERM;
+			zmyield zmTERM;
 		zmstate 3: {
 			printf("task1: catch\n");
 			zm_Exception* e = zmCatch();
 			if (e)
 				zmFreeException();
-			yield 4;
+			zmyield 4;
 		}
-		zmstate 4: 
+		zmstate 4:
 			printf("task1: 1/2\n");
-			yield 5;
-		zmstate 5: 
+			zmyield 5;
+		zmstate 5:
 			printf("task1: 2/2\n");
-			// this resume the raise subtask: task3
-			yield zmUNRAISE(sub2) | 2;
-	ZMEND			
+			/* this resume the raise subtask: task3 */
+			zmyield zmUNRAISE(sub2) | 2;
+	ZMEND
 
-	void main() {
+	int main() {
 		zm_VM *vm = zm_newVM("test");
 		zm_resume(vm , zm_newTasklet(vm , task1, NULL));
 		zm_go(vm , 100);
+		return 0;
 	}
 
 That produce this output:
-
 	task1: init
-	task2: init
-	task3: init
+		task2: init
+			task3: init
+			task3: stop this task by raising continue (*)
 	task1: catch
 	task1: 1/2
 	task1: 2/2
-	task3: term 
-	task2: term 
-	task1: term 
+			task3: (*) unraised ... OK
+			task3: no more to do ... term
+		task2: term
+	task1: term
+
 
 ## EVENT:
 Virtual event that can keep a task in a waiting state 
