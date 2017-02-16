@@ -488,60 +488,63 @@ This yield is permitted also in *normal-mode* and allow to bypass
 `ZM_TERM`.
 
 
-###Yield task example:
-This example show the difference between yield to subtask and yield
-to ptask:
+###Yield to task example:
+This example show the difference between yield to subtask `zmSUB` and yield
+to ptask `zmTO`:
 
 	#define ZM_FAST_SYNTAX 1
 	#include <zm.h>
 
-
-	/* A task definition rappresent a generic task so can be instanced 
+	/* A task definition rappresent a generic task so can be instanced
 	   as a ptask or as a subtask */
-	TASKDEF(task2) ZMSTATES
+	ZMTASKDEF(task2) ZMSTATES
 		zmstate 1:
 			printf("    task2: init\n");
 			yield zmTERM;
-			
+
 		zmstate ZM_TERM:
 			printf("    task2: end\n");
 			yield zmEND;
-	TASKEND			
+	ZMEND
 
 
-	TASKDEF(task1) ZMSTATES
+	ZMTASKDEF(task1) ZMSTATES
 		zmstate 1:
 			printf("task1: yield to sub\n");
 			/* this yield suspend task1 but subtask task2 will resume it
 			   yielding to end */
 			yield zmSUB(zmNewSubTasklet(task2, NULL)) | 2;
 
-		zmstate 2: 
+		zmstate 2:
 			printf("task1: yield to ptask\n");
 			/* this yield suspend task1 and active task2 */
-			yield zmTO(zm_newTasklet(vm ,task2, NULL)) | 3;
+			yield zmTO(zm_newTasklet(vm,task2, NULL)) | 3;
 
 		zmstate 3:
 			printf("task1: term\n");
 			yield zmTERM;
 
-	TASKEND			
+	ZMEND
 
 
-	void main() {
+	int main() {
 		zm_VM *vm = zm_newVM("test");
-		zm_State* t = zm_newTask(vm , task1, NULL);
-		zm_resume(vm , t);
-		
-		printf("#main: process all jobs...\n"); 
-		while(zm_go(vm , 1)) {}
-		
-		printf("#main: no more to do...not completly true\n"); 
-		printf("#main: resume task1 instance\n"); 
-		zm_resume(vm , t);
-		while(zm_go(vm , 1)) {}
-		
-		printf("#main: now there no more to do!\n"); 
+		zm_State* t = zm_newTask(vm, task1, NULL);
+		zm_resume(vm, t);
+
+		printf("#main: process all jobs...\n");
+		while(zm_go(vm, 1)) {}
+
+		printf("#main: no more to do...sure?\n");
+		zm_resume(vm, t);
+		while(zm_go(vm, 1)) {}
+
+		printf("#main: now there is no more to do\n");
+		zm_freeTask(vm, t);
+		zm_closeVM(vm);
+		zm_go(vm, 100);
+		zm_freeVM(vm);
+		return 0;
 	}
 
 output:
@@ -553,10 +556,9 @@ output:
 	task1: yield to ptask
 	    task2: init
 	    task2: end
-	#main: no more to do...not completly true
-	#main: resume task1 instance
+	#main: no more to do... sure?
 	task1: term
-	#main: now there no more to do!
+	#main: now there no more to do
 
 
 
