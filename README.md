@@ -1,39 +1,45 @@
 
 #ZM:
-ZM is a C library to handle *continuations* (coroutine, 
-exception, green thread) with finite state machines.
+ZM is a C library to handle [continuations](https://en.wikipedia.org/wiki/Continuation) (coroutine, exception, green thread) with finite state machines.
 
 The library is written in *C99* without external dependecy or 
 machine-specific code and can be compiled in *ansi-c* or *ansi-c++* 
 with the minal effort to define two unsigned int type
 (`uint8_t` and `uint32_t`).
 
-*ZM* is a part of a fulltextsearch-engine developed for a 
+
+This library is a part of a fulltextsearch-engine developed for a 
 web-comic project: [vikbz](http://vikbz.com/).
 
+##Portable:
+*ZM* is implemented only with *c* control flow **without** any kind of 
+assembly code or non-local-jumps functions like `setjump` and `ucontext`. 
+
+Library doesn't require any external or OS specific libraries.
 
 ##A little task with ZM:
 
-	ZMTASKDEF(foo) ZMSTATES
+	ZMTASKDEF(foo) {
+		ZMSTART
+
 		zmstate 1:
-			printf("step 1 - init\n");
+			printf("- step 1 - init\n");
 			yield 2; /* yield to zmstate 2 */ 
 
 		zmstate 3:
-			printf("step 3\n");
+			printf("- step 3 - suspend\n");
 			yield zmSUSPEND | 4; /* suspend and set resume 
 			                        point to zmstate 4 */
-
 		zmstate 2:
-			printf("step 2\n");   
+			printf("- step 2 - yield to 3\n");   
 			yield 3; /* yield to zmstate 3 */
 
 		zmstate 4:
-			printf("step 4\n");
+			printf("- step 4 - yield to 2\n");
 			yield 2; /* yield to zmstate 2 */
 
-	ZMEND			
-
+		ZMEND			
+	}
 
 This piece of code define the machine `foo` that rappresent a **task class**.
 
@@ -87,7 +93,9 @@ and use `return` to yield to another piece of code.
 Example:
 
 
-	ZMTASKDEF(foo) ZMSTATES
+	ZMTASKDEF(foo) { 
+		ZMSTART
+	
 		zmstate 1:
 			printf("step 1 - init\n");
 			yield 2; // yield to zmstate 2 
@@ -101,7 +109,8 @@ Example:
 			printf("step 2\n");
 			yield 3
 
-	ZMEND			
+		ZMEND
+	}
 
 
 this will be converted in (semplificated version):
@@ -184,15 +193,15 @@ be used in every context have it.
 
 1. **ZMABC**: task-class-define macro operator.
    - `ZMTASKDEF`
-   - `ZMSTATES`
+   - `ZMSTART`
    - `ZMEND`
 2. **zmAbcXyz**: inside (only) task functions:
     - `zmNewSubTask()`
 	- `zmCatch()` ...
 3. **zmabc**: inside task operator and library variable.
     - `zmyield` (`yield` with fast syntax)
-    - `zmstate` (`zmstate` with fast syntax)
     - `zmraise` (`raise` with fast syntax)
+    - `zmstate` 
     - `zmdata`
     - `zmop`
 4. **zmABC**: yield-operators, must be placed after the `yield`:
@@ -320,16 +329,17 @@ The main purpose of *data-tree* is to deal with the task resource deallocation.
 Each task (ptask or subtask) have this structure:
 
 
-	ZMTASKDEF(foo) 
+	ZMTASKDEF(foo) { 
 	
-	/* [global definition] */
+		/* [global definition] */
 
-	ZMSTATES
-	
+		ZMSTART
+		
 		zmstate 1:
 			/* [code]  */
-			
-	ZMEND			
+
+		ZMEND
+	}
 
 The *\[global definition\]* is an header where is possibile to define 
 variable or write piece of code that will executed before any zmstate.
@@ -344,7 +354,9 @@ This zmstate can be used as a constructor to allocate the resource for
 the task. On the other side the zmstate that define the end of a 
 zmstate is `ZM_TERM`:
 
-	ZMTASKDEF(foo) ZMSTATES
+	ZMTASKDEF(foo) {
+	
+		ZMSTART
 	
 		zmstate ZM_INIT: 
 			/* [code] */	
@@ -354,7 +366,8 @@ zmstate is `ZM_TERM`:
 			/* [code] */	
 			yield zmEND;
 
-	ZMEND 
+		ZMEND 
+	}
 
 
 ZMTASKDEF(x) is a macro that create a pointer to `zm_Machine` named 
@@ -371,29 +384,26 @@ task definition:
 
 ####Other syntax:
 
-There are some equivalent syntax for example this task:
+There are some equivalent syntax in task class definition for example `zmyield` 
+can be repleaced with `yield` (defining `ZM_FAST_SYNTAX`) and `ZMSTATES` 
+can be used in place of `ZMSTART`. Moreover `ZMTASKDEF` and `ZMEND` 
+macros implicit use curly braces `{}`. All this features allow to define 
+many syntax combinations, for example the task `foo2`:
 
-	ZMTASKDEF(foo2)
-		ZMVMSTATES
+	ZMTASKDEF(foo2) 
+	{
+		ZMSTART
 		zmstate 1: 
 			zmyield zmTERM; 
-	ZMEND
+		ZMEND
+	}
 
-can be written in a bit more *C* style as:
+can also be written as:
 
-	ZMTASKDEF(foo2) {
-		ZMSTATES
-		zmstate 1: 
-			zmyield zmTERM; 
-	ZMEND }
-
-or enabling `ZM_FAST_SYNTAX` as:
-
-	TASKDEF(foo2)
-		VMSTATES
+	ZMTASKDEF(foo2) ZMSTATES
 		zmstate 1: 
 			yield zmTERM; 
-	TASKEND
+	ZMEND
 
 
 ### Instance tasks:
@@ -497,7 +507,7 @@ to ptask `zmTO`:
 
 	/* A task definition rappresent a generic task so can be instanced
 	   as a ptask or as a subtask */
-	ZMTASKDEF(task2) ZMSTATES
+	ZMTASKDEF(task2) ZMSTART
 		zmstate 1:
 			printf("    task2: init\n");
 			yield zmTERM;
@@ -508,7 +518,7 @@ to ptask `zmTO`:
 	ZMEND
 
 
-	ZMTASKDEF(task1) ZMSTATES
+	ZMTASKDEF(task1) ZMSTART
 		zmstate 1:
 			printf("task1: yield to sub\n");
 			/* this yield suspend task1 but subtask task2 will resume it
@@ -584,7 +594,7 @@ before the catch if an exception-reset is not set.
 
 Example:
 
-	ZMTASKDEF( subtask2 ) ZMSTATES
+	ZMTASKDEF( subtask2 ) ZMSTART
 		
 		zmstate 1:
 			printf("\t\tsubtask2: init\n");
@@ -598,7 +608,7 @@ Example:
 
 
 
-	ZMTASKDEF( subtask ) ZMSTATES
+	ZMTASKDEF( subtask ) ZMSTART
 		
 		zmstate 1: {
 			zm_State *s = zmNewSubTasklet(subtask2, NULL);
@@ -613,7 +623,7 @@ Example:
 
 
 
-	ZMTASKDEF( task ) ZMSTATES
+	ZMTASKDEF( task ) ZMSTART
 		
 		zmstate 1: {
 			zm_State *s = zmNewSubTasklet(subtask, NULL);
@@ -705,7 +715,7 @@ Example:
 
 	zm_State *sub2;
 
-	ZMTASKDEF(task3) ZMSTATES
+	ZMTASKDEF(task3) ZMSTART
 		zmstate 1:
 			printf("\t\ttask3: init\n");
 			printf("\t\ttask3: stop by raising continue (*)\n");
@@ -717,7 +727,7 @@ Example:
 			zmyield zmTERM;
 	ZMEND
 
-	ZMTASKDEF(task2) ZMSTATES
+	ZMTASKDEF(task2) ZMSTART
 		zmstate 1:{
 			printf("\ttask2: init\n");
 			zm_State *s = zmNewSubTasklet(task3, NULL);
@@ -728,7 +738,7 @@ Example:
 			zmyield zmTERM;
 	ZMEND
 
-	ZMTASKDEF(task1) ZMSTATES
+	ZMTASKDEF(task1) ZMSTART
 		zmstate 1: {
 			printf("task1: init\n");
 			sub2 = zmNewSubTasklet(task2, NULL);
@@ -760,7 +770,7 @@ Example:
 		return 0;
 	}
 
-That produce this output:
+output:
 
 	task1: init
 		task2: init

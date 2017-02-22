@@ -341,17 +341,18 @@ typedef struct zm_Event_ zm_Event;
 
 typedef struct zm_EventBinder_ zm_EventBinder;
 
-/* trigger callback: trigger(vm, eventdata, statedata, counter) */
+/* trigger event callback */
 typedef int (*zm_trigger_cb)(zm_VM *vm,
                              void *eventdata,
                              void *triggerargs,
                              void *statedata,
                              size_t counter);
 
-/* unbind callback: unbind(self, eventdata, statedata, unbindscope)*/
+/* unbind event callback*/
 typedef void (*zm_unbind_cb)(zm_VM *vm,
-                             zm_Event *self,
                              void *evendata,
+                             void *statedata,
+                             /*zm_Event *self,*/
                              int unbindscope);
 
 
@@ -725,13 +726,11 @@ typedef enum {
 
 /* Task def API*/
 
-#define ZMEXTERN(x) zm_Machine* x
-
-#define ZMTASK(x)                                                             \
+#define ZMTASKDEF(x)                                                          \
     zm_yield_t x ## __function__(zm_VM*, uint8_t, void*);                     \
     zm_Machine x ## __byval__ = {-1, x ## __function__, #x, 0};               \
     zm_Machine* x = &x ## __byval__;                                          \
-    zm_yield_t (x ## __function__)(zm_VM* vm, uint8_t zmop, void* zmdata)
+    zm_yield_t (x ## __function__)(zm_VM* vm, uint8_t zmop, void* zmdata) {
 
 
 #define ZMTASKLN(base, x)                                                     \
@@ -768,8 +767,8 @@ typedef enum {
 
 
 /* taskdef / end - without graph parentesis syntax */
-#define ZMTASKDEF(x) ZMTASK(x) {
 #define ZMSTATES ZMSWITCHBEGIN
+#define ZMSTART ZMSWITCHBEGIN
 #define ZMEND ZMSWITCHEND }
 
 #define ZMSELF(t) t *self = (t*)zmdata;
@@ -777,28 +776,10 @@ typedef enum {
 
 /**** fast syntax ****/
 
-#ifndef ZM_FAST_SYNTAX
-	#define ZM_FAST_SYNTAX 0
-#endif
 
-
-
-#if ZM_FAST_SYNTAX >= 1
+#ifdef ZM_FAST_SYNTAX
 	#define yield zmyield
 	#define raise zmraise
-#endif
-
-#if ZM_FAST_SYNTAX >= 2
-	#define SUB zmSUB
-	#define ON zmSUB
-	#define SSUB zmSSUB
-	#define TO zmTO
-	#define LAST zmLAST
-
-	#define NEXT zmNEXT
-	#define CATCH zmCATCH
-	#define EVENT zmEVENT
-	#define SELF(t) ZMSELF(t)
 #endif
 
 
@@ -895,7 +876,7 @@ void izmPrintError(zm_VM* vm, FILE *stream, zm_Exception *e, int trace,
 
 
 /* event */
-zm_Event* zm_newEvent(void* data, zm_trigger_cb trigger, zm_unbind_cb unbind);
+zm_Event* zm_newEvent(zm_trigger_cb trigger, zm_unbind_cb unbind, void *data);
 
 void zm_freeEvent(zm_VM *vm, zm_Event *event);
 

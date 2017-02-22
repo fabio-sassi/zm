@@ -3601,14 +3601,14 @@ static void zm_unbindEvent(zm_VM* vm, zm_State *s, int scope)
 		zm_disableFlag(s, ZM_STATEFLAG_EVENTLOCKED);
 	} else {
 		zm_fatalDo(ZM_FATAL_UN, "UNBNDEV", NULL,
-		           "event unbind (scope = %s): state don't "
-		           " have an event binded",
+		           "event unbind (scope = %s): state doesn't "
+		           " have a binded event",
 		           zm_getUnbindEventScope(evb->event->flag));
 	}
 
-	if (evb->event->unbind) {
-		evb->event->unbind(vm, evb->event, s->data, scope);
-	}
+	if (evb->event->unbind)
+		evb->event->unbind(vm, evb->event->data, s->data, scope);
+
 
 	/* check if evb is the first element of the bindlist*/
 	if (evb->event->bindlist == evb) {
@@ -4073,7 +4073,7 @@ int zm_freeState(zm_VM *vm, zm_State *state)
 	return zm_requestFreeState(vm, state, "zm_freeState");
 }
 
-zm_Event* zm_newEvent(void* data, zm_trigger_cb trigger, zm_unbind_cb unbind)
+zm_Event* zm_newEvent(zm_trigger_cb trigger, zm_unbind_cb unbind, void *data)
 {
 	zm_Event *event = zm_alloc(zm_Event);
 
@@ -4114,7 +4114,7 @@ void zm_freeEvent(zm_VM *vm, zm_Event *event)
 
 	/* event has no more binded task: unregister */
 	if (event->unbind)
-		event->unbind(vm, event, NULL, ZM_EVENT_UNBIND_REQUEST);
+		event->unbind(vm, event->data, NULL, ZM_EVENT_UNBIND_REQUEST);
 
 	zm_free(zm_Event, event);
 }
@@ -4328,7 +4328,9 @@ zm_VM* zm_newVM(const char *name)
 int zm_closeVM(zm_VM* vm)
 {
 	zm_State *state = vm->ptasks;
+	#ifdef ZM_CHECK_CONSISTENCY
 	size_t n = vm->nptask;
+	#endif
 
 	if (!state)
 		return true;
@@ -4340,17 +4342,21 @@ int zm_closeVM(zm_VM* vm)
 			           "zm_closeVM: unexpected error: "
 			           "null ref in siblings ring");
 		}
-
-		if (n-- < 0) {
-			zm_fatalDo(ZM_FATAL_UN, "CLSVM.SC", vm,
-			           "zm_closeVM: unexpected error: "
-			           "siblings count doesn't match");
-		}
+		n--;
 		#endif
 
 		zm_abort(vm, state);
 		state = state->siblings.next;
 	} while (state != vm->ptasks);
+
+	#ifdef ZM_CHECK_CONSISTENCY
+	if (n != 0) {
+		zm_fatalDo(ZM_FATAL_UN, "CLSVM.SC", vm,
+		           "zm_closeVM: unexpected error: "
+		           "siblings count doesn't match");
+	}
+	#endif
+
 
 	return false;
 }

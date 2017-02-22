@@ -5,7 +5,7 @@ Extern task definition 1/2
 
 #include <zm.h>
 
-ZMEXTERN( mycoroutine );
+extern zm_Machine *mycoroutine;
 
 
 int main() {
