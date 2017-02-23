@@ -2958,7 +2958,8 @@ static void zm_implodeCoroutine(zm_VM *vm, zm_State *state)
 	ZM_D("implode coroutine");
 	zm_setImplodeLock(vm, NULL, state);
 
-	zm_resumeState(vm, state, false);
+	if (zm_hasntFlag(state, ZM_STATEFLAG_RUN))
+		zm_resumeState(vm, state, false);
 }
 
 static void zm_lockAndImplodeBy(zm_VM *vm, zm_State *state, int implodeby,
