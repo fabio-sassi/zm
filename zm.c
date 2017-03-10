@@ -2878,6 +2878,7 @@ static void zm_lockByException(zm_VM *vm, zm_LockAndImplode *li, zm_State *s)
 	}
 
 	if ((s->on.c4tch) && zm_hasntFlag(s, ZM_STATEFLAG_CATCH)) {
+		/* zmRESET */
 		ZM_D("lockbyexception: reset comeback of %lx", s);
 
 		if (zm_isTask(s)) {
@@ -2886,11 +2887,10 @@ static void zm_lockByException(zm_VM *vm, zm_LockAndImplode *li, zm_State *s)
 			           "report as uncaught exception");
 		}
 
-		/* zmRESET */
 		/* set resume point to reset one (saved in c4tch) */
 		s->on.resume = s->on.c4tch;
 
-		/* a reset state is suspended: no waiting, no comback */
+		/* a reset state is suspended: no waiting, no comeback */
 		zm_disableFlag(s, ZM_STATEFLAG_WAITING);
 		zm_comeback(s, NULL);
 		return;
@@ -2920,7 +2920,7 @@ static void zm_lockAndImplodeByException(zm_VM *vm, zm_State *state,
 			zm_appendExceptionTrace(vm, exception, state);
 
 		/* save next because lock by exception can reset comeback
-		 * for zmRESET */
+		 * to accomplish zmRESET */
 		next = zm_getCaller(state);
 
 		/* this check must be done before lockByException
@@ -5090,7 +5090,7 @@ static int zm_state_go(zm_VM* vm, zm_Worker *worker, zm_State *state)
 
 
 
-int zm_task_go(zm_VM* vm, zm_Machine* machine, unsigned int ncycle)
+int zm_mgo(zm_VM* vm, zm_Machine* machine, unsigned int ncycle)
 {
 	zm_Worker* worker = vm->workercursor;
 	zm_State* state;
@@ -5187,7 +5187,7 @@ int zm_task_go(zm_VM* vm, zm_Machine* machine, unsigned int ncycle)
 
 int zm_go(zm_VM* vm, unsigned int ncycle)
 {
-	return zm_task_go(vm, NULL, ncycle);
+	return zm_mgo(vm, NULL, ncycle);
 }
 
 

@@ -912,8 +912,8 @@ void zm_setProcessStateCallback(zm_VM *vm, zm_process_cb p);
 
 
 /* process */
-int zm_task_go(zm_VM* vm, zm_Machine* m, unsigned int ncycle);
 int zm_go(zm_VM* vm, unsigned int ncycle);
+int zm_mgo(zm_VM* vm, zm_Machine* m, unsigned int ncycle);
 
 
 #endif
