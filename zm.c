@@ -2195,8 +2195,8 @@ static void zm_unlinkCurrentState(zm_VM* vm)
 	zm_Worker *worker = zm_getCurrentWorker(vm);
 
 	/* NOTE: #UNLINKSTATE_SESSION_CURSOR_SYNC
-	 *  In zm_task_go: session worker can be different by workercursor
-	 *  but workercursor have no mean (for zm_task_go) so session
+	 *  In zm_stateGo: session worker can be different by workercursor
+	 *  but workercursor have no mean (for zm_stateGo) so session
 	 *  worker is the right worker
 	 *  In zm_go: session worker and workercursor are the same
 	 *  because the operation of unlink current state is the only
@@ -5044,11 +5044,11 @@ void zm_setProcessStateCallback(zm_VM *vm, zm_process_cb p)
 
 
 
-static int zm_state_go(zm_VM* vm, zm_Worker *worker, zm_State *state)
+static int zm_stateGo(zm_VM* vm, zm_Worker *worker, zm_State *state)
 {
 	int processresult;
 
-	ZM_D("zm_state_go - state: [ref %lx]", state);
+	ZM_D("zm_stateGo - state: [ref %lx]", state);
 
 	vm->currentsession.state = state;
 	vm->currentsession.worker = worker;
@@ -5058,14 +5058,14 @@ static int zm_state_go(zm_VM* vm, zm_Worker *worker, zm_State *state)
 		vm->prepost(vm, worker->machine, state, 0);
 	}
 
-	ZM_D("zm_state_go ~~~~ resume:%d", state->on.resume);
+	ZM_D("zm_stateGo ~~~~ resume:%d", state->on.resume);
 	processresult = zm_processState(vm, worker, state);
 
 	if (vm->prepost) {
 		vm->prepost(vm, worker->machine, state, 1);
 	}
 
-	ZM_D("zm_state_go - process state return %d", processresult);
+	ZM_D("zm_stateGo - process state return %d", processresult);
 
 
 	/* update states and worker cursors:
@@ -5090,7 +5090,7 @@ static int zm_state_go(zm_VM* vm, zm_Worker *worker, zm_State *state)
 
 
 
-int zm_mgo(zm_VM* vm, zm_Machine* machine, unsigned int ncycle)
+int zm_mGo(zm_VM* vm, zm_Machine* machine, unsigned int ncycle)
 {
 	zm_Worker* worker = vm->workercursor;
 	zm_State* state;
@@ -5164,7 +5164,7 @@ int zm_mgo(zm_VM* vm, zm_Machine* machine, unsigned int ncycle)
 		     (onemachine) ? " const " : "",
 		     worker->machine->name);
 
-		r = zm_state_go(vm, worker, state);
+		r = zm_stateGo(vm, worker, state);
 
 		if (r != ZM_RUN_INNERREF_CONTINUE) {
 			return r;
@@ -5187,7 +5187,7 @@ int zm_mgo(zm_VM* vm, zm_Machine* machine, unsigned int ncycle)
 
 int zm_go(zm_VM* vm, unsigned int ncycle)
 {
-	return zm_mgo(vm, NULL, ncycle);
+	return zm_mGo(vm, NULL, ncycle);
 }
 
 
