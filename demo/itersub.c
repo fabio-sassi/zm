@@ -8,7 +8,10 @@ iterator example
 #include <unistd.h>
 #include <zm.h>
 
-ZMTASKDEF( myiter ) ZMSTATES
+ZMTASKDEF( myiter )
+{
+	ZMSTART
+
 	zmstate 1:
 		printf("    iter: init\n");
 		zmyield zmCALLER | 2;
@@ -28,19 +31,19 @@ ZMTASKDEF( myiter ) ZMSTATES
 	zmstate ZM_TERM:
 		printf("    iter: end\n");
 
-ZMEND
-
-
-
+	ZMEND
+}
 
 
 
 ZMTASKDEF( mycoroutine )
+{
+
 	struct Self {
 		zm_State *iter;
 	} *self = (struct Self*)zmdata;
 
-	ZMSTATES
+	ZMSTART
 
 	zmstate 1:
 		printf("my task: init\n");
@@ -66,8 +69,9 @@ ZMTASKDEF( mycoroutine )
 
 		zm_freeSubTask(vm, self->iter);
 		free(self);
-ZMEND
 
+	ZMEND
+}
 
 
 

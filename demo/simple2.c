@@ -8,11 +8,10 @@ simple zm lib task/coroutine example
 #include <unistd.h>
 #include <zm.h>
 
-
+/* task definition without {} */
 ZMTASKDEF( mycoroutine ) ZMSTATES
 	zmstate 1:
 		printf("my task: init\n");
-
 		zmyield 2;
 
 	zmstate 2:
@@ -28,8 +27,11 @@ ZMTASKDEF( mycoroutine ) ZMSTATES
 ZMEND
 
 
-/* this use {} in a bit more c style */
-ZMTASKDEF( mycoroutine2 ) { ZMSTATES
+/* a bit more c style definition */
+ZMTASKDEF( mycoroutine2 )
+{
+	ZMSTART
+
 	zmstate 1:
 		printf("{my task2}: init\n");
 		zmyield 2;
@@ -44,7 +46,9 @@ ZMTASKDEF( mycoroutine2 ) { ZMSTATES
 
 	zmstate ZM_TERM:
 		printf("{my task2}: end\n");
-ZMEND }
+
+	ZMEND
+}
 
 
 

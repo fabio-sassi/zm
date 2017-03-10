@@ -5,10 +5,12 @@ Extern task definition 2/2
 #include <stdio.h>
 #include <zm.h>
 
-ZMTASKDEF( mycoroutine ) ZMSTATES
+ZMTASKDEF( mycoroutine )
+{
+	ZMSTART
+
 	zmstate 1:
 		printf("my task: init\n");
-
 		zmyield 2;
 
 	zmstate 2:
@@ -22,5 +24,6 @@ ZMTASKDEF( mycoroutine ) ZMSTATES
 	zmstate ZM_TERM:
 		printf("my task: end\n");
 
-ZMEND
+	ZMEND
+}
 

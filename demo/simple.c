@@ -6,10 +6,12 @@ simple zm lib task/coroutine example
 #include <zm.h>
 
 
-ZMTASKDEF( mycoroutine ) ZMSTATES
+ZMTASKDEF( mycoroutine )
+{
+	ZMSTART
+
 	zmstate 1:
 		printf("my task: init\n");
-
 		zmyield 2;
 
 	zmstate 2:
@@ -23,7 +25,8 @@ ZMTASKDEF( mycoroutine ) ZMSTATES
 	zmstate ZM_TERM:
 		printf("my task: end\n");
 
-ZMEND
+	ZMEND
+}
 
 
 int main() {

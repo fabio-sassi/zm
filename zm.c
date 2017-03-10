@@ -865,6 +865,7 @@ static zm_Trace *zm_getRaiseTraceElement(zm_Trace *t)
 
 static void zm_printTraceElement(zm_Print *out, zm_Trace *t)
 {
+	zm_iprint(out, "task-id: %lx\t\n", t->taskid);
 	zm_iprint(out, "machine: %s\t[vmstate: %d]\n", t->machinename, t->on);
 
 	if (t->filename) {
@@ -932,8 +933,9 @@ static void zm_printError(zm_Print *out, zm_Exception *e, bool errormsgmode)
 	t = zm_getRaiseTraceElement(t);
 
 	if (errormsgmode) {
-		zm_iprint(out, " in: %s (file: %s at line: %d)\n\n",
+		zm_iprint(out, " in: %s-%lx (file: %s at line: %d)\n\n",
 		          t->machinename,
+		          t->taskid,
 		          t->filename,
 		          t->nline);
 	} else {
@@ -2395,6 +2397,7 @@ static void zm_appendExceptionTrace(zm_VM *vm, zm_Exception* e, zm_State *state)
 
 	ZM_D("append Trace Exception state = [ref %lx]", state);
 
+	t->taskid = (size_t)state;
 	t->machinename = zm_getMachineName(vm, state);
 	t->on = state->on.resume;
 	t->filename = state->codeframe.filename;
@@ -2670,7 +2673,7 @@ static void zm_deepLock(zm_VM *vm, zm_State *state, zm_LockAndImplode *li)
 			 * zmERROR ...) that lock any other kind of
 			 * subtask-abort.
 			 * The second close can be only an async one, over
-			 * the entire ptask (zm_abort).
+			 * the entire ptask (zm_abortTask).
 			 */
 			zm_deepLockOverlap(vm, li, state);
 		}
@@ -3056,39 +3059,52 @@ static zm_State* zm_getLastBeforeContinueCatch(zm_VM *vm, zm_State *s,
 }
 
 
-void zm_abort(zm_VM *vm, zm_State *state)
+static void zm_abortTask(zm_VM *vm, zm_State *state, const char *refname)
 {
-	if (zm_isSubTask(state)) {
-		zm_fatalOn("zm_abort", NULL, 0);
-		zm_fatalDo(ZM_FATAL_ERROR, "ABRT.SUB", vm,
-		           "expected a task but found a subtask");
-	}
 
 	if (zm_hasFlag(state, ZM_STATEFLAG_IMPLOSIONLOCK)) {
 		/* This check is mandatory because zm_deepLock can set
 		 * one exception and can manage only one other exception just
-		 * present. After zm_abort there can be more than one
-		 * exception and a second call of zm_abort will cause a
+		 * present. After zm_abortTask there can be more than one
+		 * exception and a second call of zm_abortTask will cause a
 		 * fatal. Moreover this check avoid an useless second lock
 		 * and implode. */
 		return;
 	}
 
+	ZM_D("zm_abortTask: %lx by %s", state, refname);
+	zm_lockAndImplodeBy(vm, state, ZM_IMPLODEBY_ROOT, refname, NULL, 0);
+}
+
+void zm_abort(zm_VM *vm, zm_State *state)
+{
+	const char *refname = "zm_abort";
+
+	if (zm_isSubTask(state)) {
+		zm_fatalOn(refname, NULL, 0);
+		zm_fatalDo(ZM_FATAL_ERROR, "ABRT.SUB", vm,
+		           "expected a task but found a subtask");
+	}
 
 	if (vm->plock) {
+		if (state == zm_getCurrentState(vm)) {
+			zm_fatalOn(refname, NULL, 0);
+			zm_fatalDo(ZM_FATAL_SYNC, "ABRT.ME", vm,
+			           "cannot close current processed ptask "
+			           "with zm_abort (use: zmyield zmTERM)");
+
+		}
+
 		if (zm_haveSameContext(state, zm_getCurrentState(vm))) {
-			zm_fatalOn("zm_abort", NULL, 0);
+			zm_fatalOn(refname, NULL, 0);
 			zm_fatalDo(ZM_FATAL_SYNC, "ABRT.SELF", vm,
-			           "cannot abort a ptask during a vm "
-			           "cycle that is in the same context "
-			           "of the processed current task");
+			           "cannot abort a ptask that is the parent "
+			           "of the current processed task");
 		}
 	}
 
-	ZM_D("zm_abort: %lx", state);
-	zm_lockAndImplodeBy(vm, state, ZM_IMPLODEBY_ROOT, "zm_abort", NULL, 0);
+	zm_abortTask(vm, state, refname);
 }
-
 
 #define zm_fatalWrongCtx(ecode, s)                                            \
     do {                                                                      \
@@ -3366,6 +3382,7 @@ static zm_Exception* zm_newException(zm_VM *vm, bool error, int ecode,
 	e->beforecatch = NULL;
 
 	e->etrace = zm_alloc(zm_Trace);
+	e->etrace->taskid = (size_t)zm_getCurrentState(vm);
 	e->etrace->filename = filename;
 	e->etrace->nline = nline;
 	e->etrace->machinename = zm_getCurrentMachineName(vm);
@@ -4336,6 +4353,15 @@ int zm_closeVM(zm_VM* vm)
 	if (!state)
 		return true;
 
+	if (vm->plock) {
+		/* can be replaced with a ZM_ASSERT_VMUNLOCK TODO */
+		zm_fatalOn("zm_closeVM", NULL, 0);
+		zm_fatalDo(ZM_FATAL_SYNC, "CLSVM.LCK", vm,
+		           "cannot invoke a vm close during task "
+		           "execution (operation permitted only "
+		           "outside task definition)");
+	}
+
 	do {
 		#ifdef ZM_CHECK_CONSISTENCY
 		if (!state->siblings.next) {
@@ -4346,7 +4372,7 @@ int zm_closeVM(zm_VM* vm)
 		n--;
 		#endif
 
-		zm_abort(vm, state);
+		zm_abortTask(vm, state, "zm_closeVM");
 		state = state->siblings.next;
 	} while (state != vm->ptasks);
 

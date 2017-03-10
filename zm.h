@@ -386,6 +386,7 @@ struct zm_EventBinder_ {
 
 
 struct zm_Trace_ {
+	size_t taskid;
 	const char *filename;
 	int nline;
 	const char *machinename;

@@ -13,11 +13,11 @@ Error Exception catch example
 
 ZMTASKDEF( subtask2 ) ZMSTATES
 	zmstate 1:
-		printf("\t\tsubtask2: init\n");
+		printf("\t\t * subtask2: init\n");
 		zmraise zmERROR(0, "example message", NULL);
 
 	zmstate 2:
-		printf("\t\tsubtask2: TERM");
+		printf("\t\t * subtask2: TERM");
 		zmyield zmTERM;
 ZMEND
 
@@ -26,11 +26,11 @@ ZMEND
 ZMTASKDEF( subtask ) ZMSTATES
 	zmstate 1: {
 		zm_State *s = zmNewSubTasklet(subtask2, NULL);
-		printf("\tsubtask: init\n");
+		printf("\t * subtask: init\n");
 		zmyield zmSUB(s) | 2;
 	}
 	zmstate 2:
-		printf("\tsubtask: TERM");
+		printf("\t * subtask: TERM");
 		zmyield zmTERM;
 ZMEND
 
@@ -39,21 +39,24 @@ ZMEND
 ZMTASKDEF( task ) ZMSTATES
 	zmstate 1: {
 		zm_State *s = zmNewSubTasklet(subtask, NULL);
-		printf("task: yield to subtask\n");
+		printf("* task: yield to subtask\n");
 		zmyield zmSUB(s) | 2 | zmCATCH(2);
 	}
 	zmstate 2: {
 		zm_Exception *e = zmCatch();
 		if (e) {
-			printf("task: catch exception\n");
+			printf("* task: catch exception\n");
 			if (zmIsError(e))
 				zmPrintError(stdout, e, 1);
+			printf("---------------------------\n");
 			zmFreeException();
-			zmyield zmTERM;
+			zmyield 3;
 		}
-		printf("task: end\n");
-		zmyield zmTERM;
+		zmyield 3;
 	}
+	zmstate 3:
+		printf("* task: 3\n");
+		zmyield zmTERM;
 ZMEND
 
 
