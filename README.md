@@ -1,5 +1,5 @@
 
-#ZM:
+# ZM:
 ZM is a C library to handle [continuations](https://en.wikipedia.org/wiki/Continuation) (coroutine, exception, green thread) with finite state machines.
 
 The library is written in *C99* without external dependecy or 
@@ -11,13 +11,13 @@ with the minal effort to define two unsigned int type
 This library is a part of a fulltextsearch-engine developed for a 
 web-comic project: [vikbz](http://vikbz.com/).
 
-##Portable:
+## Portable:
 *ZM* is implemented only with *c* control flow **without** any kind of 
 assembly code or non-local-jumps functions like `setjump` and `ucontext`. 
 
 Library doesn't require any external or OS specific libraries.
 
-##A little task with ZM:
+## A little task with ZM:
 
 	ZMTASKDEF(foo) {
 		ZMSTART
@@ -86,7 +86,7 @@ This will produce the output:
 
 
 
-##The idea behind ZM:
+## The idea behind ZM:
 The idea behind ZM is to split code with `switch`-`case` 
 and use `return` to yield to another piece of code. 
 
@@ -180,7 +180,7 @@ This allow to use them simultaneously, using *OR* operator, in a single yield:
 The involved endianess issue is worked around with endianess-indipendent  
 procedure (but can also forced defining: `ZM_LITTLE_ENDIAN` or `ZM_BIG_ENDIAN`).
 
-##Command context and case convention:
+## Command context and case convention:
 
 The library define some operator, functions and macro to write and control
 a task class. 
@@ -189,7 +189,7 @@ The main case convention is: commands relative to task class context
 only don't have underscore after *zm* prefix, while commands that can 
 be used in every context have it.
 
-###Task-class context:
+### Task-class context:
 
 1. **ZMABC**: task-class-define macro operator.
    - `ZMTASKDEF`
@@ -210,7 +210,7 @@ be used in every context have it.
    - `zmCATCH()`
    - `zmTERM` ...
 
-###Generic context:
+### Generic context:
 
 1. **zm\_abcDefg**: functions that can be used inside or outside task 
    definition.
@@ -227,7 +227,7 @@ be used in every context have it.
 
 
 
-#The Core:
+# The Core:
 ZM use a finite state machine to handle *concurrency*. The task manager (also 
 called virtual stack mapper or *vm*) cycle throught active tasks and 
 process them using the function (*machine*) associated to the task (in the 
@@ -268,7 +268,7 @@ This is true also if the resume is accomplished with `zmTO` macro.
 NOTE: in this document *task* refer to *generic task* to avoid to 
 repeat every time "ptask and/or subtask".
 
-###Resume a task:
+### Resume a task:
 The different behaviour between ptask and subtask implies that a task 
 can resume:
 
@@ -282,7 +282,7 @@ can resume:
 	yield zmSUB(subtask) | 5
 ```
 
-###Suspend a task:
+### Suspend a task:
 Yield to suspend for ptasks implies only a suspend while for a subtasks 
 mean also the automaticaly resume of the task that are wainting for it.
 
@@ -382,7 +382,7 @@ task definition:
 - **zmop**: is the current zmstate
 
 
-####Other syntax:
+#### Other syntax:
 
 There are some equivalent syntax in task class definition for example `zmyield` 
 can be repleaced with `yield` (defining `ZM_FAST_SYNTAX`) and `ZMSTATES` 
@@ -446,7 +446,7 @@ reason close use the inverse order.
 This avoid race-condition during resource free.
 
 
-###Free tasks:
+### Free tasks:
 
 A task can be free only if it have just receive a *close*. The commands to
 free a task are:
@@ -461,7 +461,7 @@ The free commands *cannot be perfomed in a sync way* because the task manager
 should have to finish close operation before a task can be freed.
 
 
-###Tasklet:
+### Tasklet:
 
 A tasklet is a task that have not to be manually free, it will automatically 
 free after the close operations.
@@ -483,7 +483,7 @@ in place of task.
 
 
 
-###The task distructor:
+### The task distructor:
 When a task go in **closing-mode** the task will resumed in `ZM_TERM` 
 zmstate.
 
@@ -498,7 +498,7 @@ This yield is permitted also in *normal-mode* and allow to bypass
 `ZM_TERM`.
 
 
-###Yield to task example:
+### Yield to task example:
 This example show the difference between yield to subtask `zmSUB` and yield
 to ptask `zmTO`:
 
@@ -588,7 +588,7 @@ Exception feature and rule:
 - An caught exception must be free before the next yield. 
 
 
-####Error Exception:
+#### Error Exception:
 Error exception close all the task between the raise and the task 
 before the catch if an exception-reset is not set.
 
@@ -679,7 +679,7 @@ output:
 
 
 
-####Exception Reset:
+#### Exception Reset:
 *Exception-reset* allow to avoid the exception-error close beaviour, 
 defining a zmstate as resume point.
 
@@ -692,7 +692,7 @@ To define a resent point in the raise itself use instead:
 	raise zmERROR(0, "test", NULL) | 5;
 
 
-####Continue Exception:
+#### Continue Exception:
 Continue exception have a very different beavior from error exception. 
 
 *A continue exception is a kind of (big) suspend-resume block.*
@@ -792,7 +792,7 @@ until a trigger resume the task.
 **[WORK IN PROGRESS: I will complete and correct this README as soon as possible** 
 
 
-##Other corotuine library:
+## Other corotuine library:
 
 A famous article with an implementation of coroutine in C by Simon Tatham can
 be found [here](http://www.chiark.greenend.org.uk/~sgtatham/coroutines.html).
