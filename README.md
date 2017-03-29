@@ -636,7 +636,7 @@ Example:
 			if (e) {
 				printf("task: catch exception\n");
 				if (zmIsError(e))
-					zmPrintError(stdout, e, 1);
+					zm_printError(NULL, e, 1);
 				zmFreeException();
 				zmyield zmTERM;
 			}

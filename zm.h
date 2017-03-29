@@ -32,7 +32,7 @@
 #define __ZM_VM_H__
 
 
-#define ZM_VERSION "0.0.8"
+#define ZM_VERSION "0.0.9"
 
 #include <string.h>
 #include <stdio.h>
@@ -209,12 +209,13 @@ enum {
 #define ZM_RUN_IDLE 0
 #define ZM_RUN_AGAIN 1
 #define ZM_RUN_VMBREAK 2
-#define ZM_RUN_INNERREF_CONTINUE 128
+#define ZM_RUN_EXCEPTION 3
 
 
 /***** INTERNAL PROCESS MODE ****/
 #define ZM_PROCESS_VMBREAK 1
 #define ZM_PROCESS_STATEUNLINKED 2
+#define ZM_PROCESS_EXCEPTION 4
 
 
 /***** IMPLODE MODE ****/
@@ -418,6 +419,7 @@ struct zm_Exception_ {
 #define ZM_EXCEPTION_CONTINUE 2
 #define ZM_EXCEPTION_CONTINUEREF 3
 #define ZM_EXCEPTION_STARTIMPLOSION 4
+#define ZM_EXCEPTION_UERROR 5
 
 
 /** Machine: avaible in global scope ***/
@@ -512,6 +514,8 @@ struct zm_VM_ {
 	} currentsession;
 
 	const char *vname;
+
+	zm_Exception* uncaught;
 };
 
 
@@ -652,9 +656,6 @@ typedef enum {
 #define zmGetCloseOp()                                                        \
         izmGetCloseOp(vm, __FILE__, __LINE__)
 
-#define zmPrintError(stream, e, t)                                            \
-        izmPrintError(vm, (stream), (e), (t), __FILE__, __LINE__)
-
 #define zmNewSubTask(m, data)                                                 \
         izm_addTask((vm), (m), (data), true, 0, __FILE__, __LINE__)
 
@@ -692,7 +693,7 @@ typedef enum {
 /*** resume modifier ***/
 #define zmNEXT(x) ZM_B3(x)
 #define zmCATCH(x) izmCATCH(vm, x)
-#define zmRESET(x) ZM_B2(x)
+#define zmRESET(x) izmRESET(vm, x, __FILE__, __LINE__)
 
 /*** continue-exception ***/
 #define zmUNRAISE(s) izmUNRAISE(vm, (s), __FILE__, __LINE__)
@@ -746,7 +747,7 @@ typedef enum {
 
 #define ZMSWITCHDEFAULT                                                       \
         default:                                                              \
-            if ( zmop == ZM_TERM ) {                                      \
+            if ( zmop == ZM_TERM ) {                                          \
                 zmyield ZM_TASK_END;                                          \
             }                                                                 \
             zm_fatalUndefState(vm, __FILE__, __LINE__);                       \
@@ -836,6 +837,7 @@ void zm_printTreeVM(zm_Print *out, zm_VM *vm);
 
 /* yield operator */
 zm_yield_t izmCATCH(zm_VM* vm, int n);
+zm_yield_t izmRESET(zm_VM* vm, int n, const char* filename, int nline);
 
 zm_yield_t izmCLOSE(zm_VM *vm, zm_State *state, const char *fn, int nl);
 zm_yield_t izmDROP(zm_VM *vm, zm_Exception* e, const char *fn, int nl);
@@ -872,9 +874,7 @@ zm_State* izmGetCaller(zm_VM *vm);
 
 int zmIsError(zm_Exception *e);
 
-void izmPrintError(zm_VM* vm, FILE *stream, zm_Exception *e, int trace,
-                                       const char *filename, int nline);
-
+void zm_printError(zm_Print *out, zm_Exception *e, int trace);
 
 /* event */
 zm_Event* zm_newEvent(zm_trigger_cb trigger, zm_unbind_cb unbind, void *data);
@@ -902,6 +902,10 @@ void zm_abort(zm_VM *vm, zm_State *state);
 size_t zm_getDeep(zm_State *s);
 
 zm_State* zm_getCaller(zm_State *s);
+
+zm_Exception *zm_catch(zm_VM *vm);
+
+void zm_freeError(zm_VM *vm, zm_Exception *e);
 
 
 /* vm - virtual mapper */
