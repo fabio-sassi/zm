@@ -527,8 +527,8 @@ struct zm_Print_ {
 	int indent;
 	struct {
 		char *data;
-		int used;
-		int size;
+		size_t used;
+		size_t size;
 	} buffer;
 };
 
@@ -787,14 +787,14 @@ typedef enum {
 
 
 /* memory utilty */
-#define zm_alloc(s) ((s*)zm_malloc(sizeof(s)))
-#define zm_nalloc(s, n) ((s*)zm_malloc(sizeof(s) * (n)))
+#define zm_alloc(s) ((s*)zm_malloc(sizeof(s), true))
+#define zm_nalloc(s, n) ((s*)zm_malloc(sizeof(s) * (n), true))
 #define zm_free(s, ptr) zm_mfree(sizeof(s), ptr)
 #define zm_nfree(s, n, ptr) zm_mfree(sizeof(s) * (n), ptr)
-#define zm_realloc(ptr, s, n) ((s*)zm_mrealloc((ptr), sizeof(s) * (n)))
+#define zm_realloc(ptr, s, n) ((s*)zm_mrealloc((ptr), sizeof(s) * (n), true))
 
-void *zm_malloc(size_t size);
-void *zm_mrealloc(void *ptr, size_t size);
+void *zm_malloc(size_t size, int memfatal);
+void *zm_mrealloc(void *ptr, size_t size, int memfatal);
 void zm_mfree(size_t size, void *ptr);
 
 
@@ -804,7 +804,7 @@ void zm_setIndent(zm_Print *out, int indent);
 void zm_addIndent(zm_Print *out, int indent);
 void zm_iprint(zm_Print *out, const char *fmt, ...);
 void zm_print(zm_Print *out, const char *fmt, ...);
-char* zm_popPrintBuffer(zm_Print *out);
+char* zm_popPrintBuffer(zm_Print *out, size_t *size);
 void zm_removePrintBuffer(zm_Print *out);
 
 

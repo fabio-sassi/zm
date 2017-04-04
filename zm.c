@@ -150,20 +150,21 @@ static void zm_memfatal(const char *fmt, ...)
 
 
 
-void *zm_malloc(size_t size)
+void *zm_malloc(size_t size, int memfatal)
 {
 	void *ptr = malloc(size);
-	if (!ptr)
+
+	if ((memfatal) && (!ptr))
 		zm_memfatal("zm_malloc: out of mem\n");
 
 	return ptr;
 }
 
-void *zm_mrealloc(void *ptr, size_t size)
+void *zm_mrealloc(void *ptr, size_t size, int memfatal)
 {
 	ptr = realloc(ptr, size);
 
-	if (!ptr)
+	if ((memfatal) && (!ptr))
 		zm_memfatal("zm_mrealloc: out of mem\n");
 
 	return ptr;
@@ -210,7 +211,7 @@ void zm_initPrint(zm_Print *p, FILE *stream, int indent, int buf)
 	p->indent = indent;
 
 	if (buf) {
-		p->buffer.data = (char*)malloc(512);
+		p->buffer.data = (char*)zm_malloc(512, false);
 		p->buffer.used = 0;
 		p->buffer.size = 512;
 	} else {
@@ -218,9 +219,11 @@ void zm_initPrint(zm_Print *p, FILE *stream, int indent, int buf)
 	}
 }
 
-char* zm_popPrintBuffer(zm_Print *out)
+char* zm_popPrintBuffer(zm_Print *out, size_t *size)
 {
 	char* b = out->buffer.data;
+	if (size)
+		*size = out->buffer.size;
 	out->buffer.data = NULL;
 	return b;
 }
@@ -228,8 +231,8 @@ char* zm_popPrintBuffer(zm_Print *out)
 
 void zm_removePrintBuffer(zm_Print *out)
 {
-	free(out->buffer.data);
-	out->buffer.data = false;
+	zm_nfree(char, out->buffer.size, out->buffer.data);
+	out->buffer.data = NULL;
 }
 
 static int zm_havePrintBuffer(zm_Print *out, int len)
@@ -244,15 +247,16 @@ static int zm_havePrintBuffer(zm_Print *out, int len)
 
 	if (out->buffer.used + len >= out->buffer.size) {
 		void *ptr = (void*)out->buffer.data;
+		size_t size = out->buffer.used + len + 512;
 
-		out->buffer.size = out->buffer.used + len + 512;
+		ptr = zm_mrealloc(ptr, out->buffer.size, false);
 
-		ptr = realloc(ptr, out->buffer.size);
 		if (!ptr) {
 			zm_removePrintBuffer(out);
 			return false;
 		}
 
+		out->buffer.size = size;
 		out->buffer.data = (char*)ptr;
 	}
 
@@ -540,6 +544,7 @@ void zm_fatalDo(zm_kfatal_t kind, const char *ecode, zm_VM *vm,
 	const char* errlabel;
 	int again = false;
 	char *errorstr = NULL;
+	size_t errorsize;
 
 	if (zmg_err.locked)
 		return;
@@ -571,7 +576,7 @@ void zm_fatalDo(zm_kfatal_t kind, const char *ecode, zm_VM *vm,
 		va_end(args);
 
 		if (zmg_err.at.fatalcb)
-			errorstr = zm_popPrintBuffer(&out);
+			errorstr = zm_popPrintBuffer(&out, &errorsize);
 
 		zm_fatalPrintErrorInfo(&out, vm, kind);
 
@@ -596,7 +601,7 @@ void zm_fatalDo(zm_kfatal_t kind, const char *ecode, zm_VM *vm,
 		zmg_err.at.fatalcb(vm, errorstr, zmg_err.at.data);
 
 		if (errorstr)
-			free(errorstr);
+			zm_nfree(char, errorsize, errorstr);
 	}
 
 	exit(EXIT_FAILURE);
@@ -4549,7 +4554,7 @@ int zm_closeVM(zm_VM* vm)
 		return true;
 
 	if (vm->plock) {
-		/* can be replaced with a ZM_ASSERT_VMUNLOCK TODO */
+		/* can be replaced with ZM_ASSERT_VMUNLOCK TODO */
 		zm_fatalOn("zm_closeVM", NULL, 0);
 		zm_fatalDo(ZM_FATAL_SYNC, "CLSVM.LCK", vm,
 		           "cannot invoke a vm close during task "
@@ -4907,17 +4912,15 @@ static int zm_processYield(zm_VM *vm, zm_Worker *worker, zm_State *state,
 
 		ZM_D("ZM_MACHINEOP_RUN | ZM_TASK_RAISE_ERROR");
 
-		/* remove reference from raise state*/
+		/* remove reference from raise state */
 		state->exception = NULL;
 
 		/* zmRESET in implicit mode */
 		if ((!result.c4tch) && (result.resume)) {
-			if (zm_isSubTask(state)) {
-				// TODO uniformiamo o lanciamo in entrambi
-				// un fatal o in nessuno dei due
-				/* transform implicit reset in explicit one */
-				result.c4tch = result.resume;
-			}
+			/* transform implicit reset in explicit one
+			 * NOTE: raise and drop are allowed only in
+			 * subtask so currentstate is a subtask */
+			result.c4tch = result.resume;
 		}
 
 		zm_suspendCurrentState(vm, result, true);

@@ -584,8 +584,11 @@ Exception feature and rule:
 
 - Exceptions can be raised only inside a subtask and can be catch 
   in other subtasks or in the root-ptask.
-- An exception without a catch will cause a fatal.
-- An caught exception must be free before the next yield. 
+- An error-exception without a catch cause `zm_go` to return immediatly
+  `ZM_RUN_EXCEPTION`. The relative exception *must* be catch
+  with `zm_catch`.
+- A continue-exception without a catch will cause a fatal.
+- Exceptions caught inside task (`zmCatch()`) must be free before the next yield. 
 
 
 #### Error Exception:
@@ -679,8 +682,8 @@ output:
 
 
 
-#### Exception Reset:
-*Exception-reset* allow to avoid the exception-error close beaviour, 
+#### Error Exception Reset:
+*Error-reset* allow to avoid the exception-error close beaviour, 
 defining a zmstate as resume point.
 
 The reset point is defined with this syntax:
@@ -691,6 +694,7 @@ To define a resent point in the raise itself use instead:
 
 	raise zmERROR(0, "test", NULL) | 5;
 
+zmRESET cannot be applied to a ptask.
 
 #### Continue Exception:
 Continue exception have a very different beavior from error exception. 
@@ -700,8 +704,8 @@ Continue exception have a very different beavior from error exception.
 The continue exception suspend the execution of a subtask in the raise 
 state and resume the state with the catch.
 
-In this situations all the subtask between the raise and the subtask
-before catch are a suspended block. 
+In this situation all the subtask between the raise and the subtask
+before catch are a suspended block.
 
 This block can be resumed using:
 
@@ -709,7 +713,7 @@ This block can be resumed using:
 	yield zmSSUB(sub1) | 5;
 
 This commands *don't resume* `sub1` but the state who raised the 
-continue exception (a child sub1).
+continue exception.
 
 Example:
 
@@ -790,6 +794,11 @@ Virtual event that can keep a task in a waiting state
 until a trigger resume the task.
 
 **[WORK IN PROGRESS: I will complete and correct this README as soon as possible** 
+
+
+## Run:
+
+The main command to run a task is `zm_go`
 
 
 ## Other corotuine library:
