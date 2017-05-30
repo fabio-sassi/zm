@@ -650,9 +650,6 @@ typedef enum {
         izmCatchException(vm, ZM_EXCEPTION_CONTINUE, "zmCatchContinue",       \
                                                     __FILE__, __LINE__)
 
-#define zmFreeException()                                                     \
-        izmFreeException(vm, __FILE__, __LINE__)
-
 #define zmGetCloseOp()                                                        \
         izmGetCloseOp(vm, __FILE__, __LINE__)
 
@@ -664,11 +661,17 @@ typedef enum {
                                                __FILE__, __LINE__)
 
 
-/*** state traversing ***/
+/*** task traversing ***/
 #define zmGetParent(n)   izmGetParent(vm, (n), __FILE__, __LINE__)
 #define zmGetDeep()      izmGetDeep(vm)
 #define zmGetRoot()      izmGetRoot(vm)
 #define zmGetCaller()    izmGetCaller(vm)
+
+/* retrive data in task stack */
+#define zmGetRootData(s)      ((s*)izmGetRootData(vm))
+#define zmGetCallerData(s)    ((s*)izmGetCallerData(vm))
+
+
 
 /**** Inside Task Yield API ****/
 
@@ -875,6 +878,11 @@ zm_State* izmGetRoot(zm_VM *vm);
 
 zm_State* izmGetCaller(zm_VM *vm);
 
+void* izmGetRootData(zm_VM *vm);
+
+void* izmGetCallerData(zm_VM *vm);
+
+
 int zmIsError(zm_Exception *e);
 
 void zm_printError(zm_Print *out, zm_Exception *e, int trace);
@@ -906,9 +914,9 @@ size_t zm_getDeep(zm_State *s);
 
 zm_State* zm_getCaller(zm_State *s);
 
-zm_Exception *zm_catch(zm_VM *vm);
+zm_Exception *zm_ucatch(zm_VM *vm);
 
-void zm_freeError(zm_VM *vm, zm_Exception *e);
+void zm_freeUncaughtError(zm_VM *vm, zm_Exception *e);
 
 
 /* vm - virtual mapper */

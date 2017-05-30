@@ -37,35 +37,15 @@ size_t zmg_mcounter = 0;
 #define zm_isTermState(s) ((s) == ZM_TERM)
 #define zm_isntTermState(s) ((s) != ZM_TERM)
 
+#define ZM_ELOCK_ON 1
+#define ZM_ELOCK_OFF 2
+#define ZM_ELOCK_REUSE 3
+
 
 /*---------------------------------------------------------------------------
  *  state traversing
  *  -----------------------------------------------------------------------*/
 
-
-static int zm_haveComeback(zm_State *s)
-{
-	if (!s->parent)
-		return false;
-
-	return s->parent->comeback != NULL;
-}
-
-static zm_State* zm_caller(zm_State *s)
-{
-	return s->parent->comeback;
-}
-
-
-zm_State* zm_getCaller(zm_State *s)
-{
-	return (zm_isSubTask(s)) ? s->parent->comeback : NULL;
-}
-
-zm_State* izmGetCaller(zm_VM *vm)
-{
-	return zm_getCaller(zm_getCurrentState(vm));
-}
 
 static size_t zm_deep(zm_State *sub)
 {
@@ -114,6 +94,24 @@ size_t izmGetDeep(zm_VM *vm)
 	return zm_deep(s);
 }
 
+static int zm_haveComeback(zm_State *s)
+{
+	if (!s->parent)
+		return false;
+
+	return s->parent->comeback != NULL;
+}
+
+static void zm_setComeback(zm_State *sub, zm_State *s)
+{
+	sub->parent->comeback = s;
+}
+
+static zm_State* zm_caller(zm_State *s)
+{
+	return s->parent->comeback;
+}
+
 zm_State* izmGetRoot(zm_VM *vm)
 {
 	zm_State *s = zm_getCurrentState(vm);
@@ -124,9 +122,32 @@ zm_State* izmGetRoot(zm_VM *vm)
 	return s->parent->stack[0];
 }
 
-static void zm_setComeback(zm_State *sub, zm_State *s)
+void* izmGetRootData(zm_VM *vm)
 {
-	sub->parent->comeback = s;
+	zm_State *s = zm_getCurrentState(vm);
+
+	if (zm_isTask(s))
+		return s->data;
+
+	return s->parent->stack[0]->data;
+}
+
+zm_State* zm_getCaller(zm_State *s)
+{
+	return (zm_isSubTask(s)) ? s->parent->comeback : NULL;
+}
+
+zm_State* izmGetCaller(zm_VM *vm)
+{
+	return zm_getCaller(zm_getCurrentState(vm));
+}
+
+
+void* izmGetCallerData(zm_VM *vm)
+{
+	zm_State *s = zm_getCurrentState(vm);
+
+	return (zm_isSubTask(s)) ? s->parent->comeback->data : NULL;
 }
 
 
@@ -2333,7 +2354,7 @@ static zm_Exception* zm_newInnerException(uint8_t kind)
 {
 	zm_Exception *e = zm_alloc(zm_Exception);
 	e->kind = kind;
-	e->elock = false;
+	e->elock = ZM_ELOCK_OFF;
 	e->ecode = 0;
 	e->msg = NULL;
 	e->data = NULL;
@@ -2888,7 +2909,7 @@ static zm_State *zm_serializeImplosion(zm_LockAndImplode *li,
 
 	/* when exception is passed to this function (error raising case)
 	   set the first implosion element as exception->beforecatch (if no
-	   zmRESET has been used this is really the state before catch) */
+	   zmRESET has been used this should be the state before catch) */
 	if (exception)
 		exception->beforecatch = state;
 
@@ -3051,7 +3072,7 @@ static void zm_setUncaughtError(zm_VM *vm, zm_Exception *exception)
 	vm->uncaught = exception;
 }
 
-zm_Exception *zm_catch(zm_VM *vm)
+zm_Exception *zm_ucatch(zm_VM *vm)
 {
 	zm_Exception *e = vm->uncaught;
 	vm->uncaught = NULL;
@@ -3074,7 +3095,7 @@ static void zm_freeTrace(zm_Exception *e)
 
 
 
-void zm_freeError(zm_VM *vm, zm_Exception *e)
+void zm_freeUncaughtError(zm_VM *vm, zm_Exception *e)
 {
 	switch(e->kind) {
 	case ZM_EXCEPTION_UERROR:
@@ -3084,8 +3105,8 @@ void zm_freeError(zm_VM *vm, zm_Exception *e)
 	case ZM_EXCEPTION_ERROR:
 	case ZM_EXCEPTION_CONTINUE:
 		zm_fatalDo(ZM_FATAL_ERROR, "FREER.EC", vm,
-		           "zm_freeError can be used only to free error "
-		           "catch with zm_catch (see zmFreeException)");
+		           "zm_freeUncaughtError can be used only to free "
+		           "error-exception catched with zm_ucatch");
 
 	default:
 		zm_fatalDo(ZM_FATAL_UN, "FREEX.EUN", vm,
@@ -3217,7 +3238,8 @@ static void zm_lockAndImplodeByException(zm_VM *vm, zm_State *state,
 	/* set exception in catch state */
 	catchstate->exception = exception;
 
-	/* zm_serializeImplosion set beforecatch (reseted here for zmDROP) */
+	/* precautional reset beforecatch for zmDROP: zm_serializeImplosion
+	   should anyway reset beforecatch */
 	exception->beforecatch = NULL;
 
 	/* enable ws check after lock the exception path */
@@ -3453,128 +3475,42 @@ zm_yield_t izmCLOSE(zm_VM *vm, zm_State *state, const char *filename, int nline)
 	return ZM_TASK_SUSPEND_WAITING_SUBTASK;
 }
 
-static int zm_canCatch(zm_State *s)
-{
-	if (zm_isTermState(s->on.resume))
-		return true;
-
-	return s->on.c4tch;
-}
-
 zm_Exception *izmCatchException(zm_VM *vm, int ekindfilter, const char* refname,
                                                 const char *filename, int nline)
 {
 	/* #EXCEPT_WORKFLOW #CONTINUE_EXCEPT*/
-	zm_Exception *e = zm_getCurrentState(vm)->exception;
-
-	ZM_ASSERT_VMLOCK("XCATCH.VLCK", refname, filename, nline);
-
-	/* This assertion force to catch an exception only in the
-	 * catch state (the last that have exception in state->exeption)
-	 * to avoid to catch and free exception before other subtasks
-	 * with the same exception have been closed.
-
-	 * This assertion work also in term zmstate because
-	 * lock and implode preserve catch #LOCK_SAVE_CATCH */
+	zm_State *state = zm_getCurrentState(vm);
+	zm_Exception *e = state->exception;
 
 	ZM_D("%s: exception = %lx - filter = %d", refname, e, ekindfilter);
 
-	if (!zm_canCatch(zm_getCurrentState(vm))) {
-		zm_fatalOn(refname, filename, nline);
-		zm_fatalDo(ZM_FATAL_UCODE, "XCATCH.NC", vm,
-		           "Cannot invoke a catch exception in "
-		           "a non catch zmstate");
-	}
+	ZM_ASSERT_VMLOCK("XCATCH.VLCK", refname, filename, nline);
 
-
-	/* Exception can also be null because if we set the same zmstate
-	 * for resume and catch ( example: yield 4 | vmCATCH(4) )
-	 * zmCatch can also be used to discriminate catch (return null)
-	 * from resume (return exception pointer) or to check if there is
-	 * an exception that must be free (this happend when a task
-	 * is aborted before process a catch) */
+	/* This allow to use zmCatch to check if there is an exception in
+	   zmstate that not only for catch (example: yield 4 | vmCATCH(4))*/
 	if (e == NULL)
 		return NULL;
 
-
 	switch(e->kind) {
-	case ZM_EXCEPTION_ERROR:
-	case ZM_EXCEPTION_CONTINUE:
-		break;
-
-	case ZM_EXCEPTION_STARTIMPLOSION:
-	case ZM_EXCEPTION_CONTINUEREF:
-		return NULL;
-
-	default:
-		zm_fatalDo(ZM_FATAL_UN, "CTCEXCPT.EUN", vm,
-		           "exception->kind = (%s) %d",
+	case ZM_EXCEPTION_ERROR: break;
+	case ZM_EXCEPTION_CONTINUE: break;
+	case ZM_EXCEPTION_STARTIMPLOSION: return NULL;
+	case ZM_EXCEPTION_CONTINUEREF: return NULL;
+	default: zm_fatalDo(ZM_FATAL_UN, "XCATCH.UN", vm, "e->kind = %s %d",
 		           zm_getExceptionKindName(e), e->kind);
 	}
 
-	if (ekindfilter) {
+	if (ekindfilter)
 		if (ekindfilter != e->kind)
 			return NULL;
-	}
+
+	/* unlock exception */
+	e->elock = ZM_ELOCK_OFF;
+
+	state->exception = NULL;
 
 	return e;
 }
-
-
-
-void izmFreeException(zm_VM *vm, const char *filename, int nline)
-{
-	/* This cannot be an api (only freeException macro) for the exception
-	 * axiom 3 #ASSIOMI_ECCEZIONI */
-	zm_Exception *e = zm_getCurrentState(vm)->exception;
-
-	ZM_ASSERT_VMLOCK("FREEX.VLCK", "zmFreeException", filename, nline);
-
-	if (!zm_canCatch(zm_getCurrentState(vm))) {
-		zm_fatalOn("zmFreeException", filename, nline);
-		zm_fatalDo(ZM_FATAL_UCODE, "FREEX.1", vm,
-		           "Cannot be invoked in a non catch zmstate");
-	}
-
-	/* #EXCEPT_WORKFLOW #CONTINUE_EXCEPT */
-
-	if (e == NULL) {
-		zm_fatalOn("zmFreeException", filename, nline);
-		zm_fatalDo(ZM_FATAL_UCODE, "FREEX.2", vm,
-		           "no exception to free");
-	}
-
-	switch(e->kind) {
-	case ZM_EXCEPTION_ERROR:
-		zm_freeTrace(e);
-		break;
-
-	case ZM_EXCEPTION_CONTINUE:
-		/* nothing to do */
-		break;
-
-	case ZM_EXCEPTION_STARTIMPLOSION:
-	case ZM_EXCEPTION_CONTINUEREF:
-		zm_fatalOn("zmFreeException", filename, nline);
-		zm_fatalDo(ZM_FATAL_UCODE, "FREEX.3", vm,
-		           "no exception to free");
-
-	default:
-		zm_fatalDo(ZM_FATAL_UN, "FREEX.EUN", vm,
-		           "exception->kind = (%s) %d",
-		           zm_getExceptionKindName(e), e->kind);
-	}
-
-	e->msg = NULL;
-	e->data = NULL;
-
-	/* unlock exception */
-	e->elock = false;
-
-	/* remove exception reference from state */
-	zm_getCurrentState(vm)->exception = NULL;
-}
-
 
 static zm_Exception* zm_newException(zm_VM *vm, bool error, int ecode,
                                           const char *msg, void *data,
@@ -3586,14 +3522,13 @@ static zm_Exception* zm_newException(zm_VM *vm, bool error, int ecode,
 
 	zm_Exception* e = zm_alloc(zm_Exception);
 
-	e->kind = (error) ? (ZM_EXCEPTION_ERROR) :
-			(ZM_EXCEPTION_CONTINUE);
+	e->kind = (error) ? (ZM_EXCEPTION_ERROR) : (ZM_EXCEPTION_CONTINUE);
 
 	e->msg = msg;
 	e->ecode = ecode;
 	e->data = data;
 
-	e->elock = true;
+	e->elock = ZM_ELOCK_ON;
 	/* beforecatch is set by zm_implode for error-exception or by
 	 * getLastBeforeCatch for continue-exception */
 	e->beforecatch = NULL;
@@ -3651,6 +3586,8 @@ zm_yield_t izmDROP(zm_VM *vm, zm_Exception* e, const char *filename, int nline)
 		           "exception can be drop only in subtask");
 	}
 
+	e->elock = ZM_ELOCK_REUSE;
+
 	return zm_raiseException(vm, e, true);
 }
 
@@ -3658,6 +3595,7 @@ zm_yield_t izmEXCEPTION(zm_VM *vm, bool error, int ecode, const char *msg,
                               void *data, const char *filename, int nline)
 {
 	const char *refname = ((error) ? "zmERROR" : "zmCONTINUE");
+	zm_State *state = zm_getCurrentState(vm);
 	zm_Exception* e;
 
 	ZM_D("%s(error = %d, ecode = %d, %s)", refname,
@@ -3667,11 +3605,19 @@ zm_yield_t izmEXCEPTION(zm_VM *vm, bool error, int ecode, const char *msg,
 
 	e = zm_newException(vm, error, ecode, msg, data, filename, nline);
 
-	if (zm_isTask(zm_getCurrentState(vm))) {
+	if (zm_isTask(state)) {
 		/* #NO_RAISE_IN_PTASK */
 		zm_fatalOn(refname, filename, nline);
-		zm_fatalDo(ZM_FATAL_UCODE, "RAISENEW.1", vm,
+		zm_fatalDo(ZM_FATAL_UCODE, "RAISENEW.PT", vm,
 		           "exception can be raise only in subtask");
+	}
+
+	if (state->exception) {
+		zm_fatalOn(refname, filename, nline);
+		zm_fatalDo(ZM_FATAL_UCODE, "RAISENEW.JP", vm,
+			   "zmraise found a pending exception. A new exception "
+			   "can be raised only if the pending one as just been "
+			   "catched (use zmCatch)");
 	}
 
 	return zm_raiseException(vm, e, error);
@@ -4755,44 +4701,22 @@ static void zm_processUnexpected(zm_VM *vm, zm_State *state, zm_Yield result)
 
 static void zm_freeUnlockedException(zm_VM *vm, zm_Exception *e)
 {
-	if (!e->elock) {
-		/* no lock => free exception */
-		zm_free(zm_Exception, e);
+	if (e->elock == ZM_ELOCK_REUSE) {
+		e->elock = ZM_ELOCK_ON;
 		return;
 	}
 
-	/*
-	 * A simpler way is check state->exception == NULL and
-	 * free the exception inside izmFreeException. But if
-	 * an exception will be raised inside a catch this control
-	 * isn't enougth. elock allow to manage this kind of
-	 * situations.
-	 */
-
-	ZM_D("process_state[30] - check exception...");
-	switch(e->kind) {
-
-	case ZM_EXCEPTION_CONTINUE:
+	if (e->elock == ZM_ELOCK_ON) {
 		zm_fatalOn(NULL, NULL, 0);
-		zm_fatalDo(ZM_FATAL_YIELD, "YNOFREEC.1", vm,
-		           "continue-exception not free after processing "
-		           "catch state (see zmFreeException)");
-
-	case ZM_EXCEPTION_ERROR:
-		zm_fatalOn(NULL, NULL, 0);
-		zm_fatalDo(ZM_FATAL_YIELD, "YNOFREEE.1", vm,
-		           "exception-error not free after processing "
-		           "catch state (see zmFreeException)");
-
-	case ZM_EXCEPTION_STARTIMPLOSION:
-	case ZM_EXCEPTION_CONTINUEREF:
-	default:
-		zm_fatalDo(ZM_FATAL_UNP, "YNOFREEC.EUN", vm,
-		           "exception->kind = (%s) %d",
-		           zm_getExceptionKindName(e), e->kind);
+		zm_fatalDo(ZM_FATAL_YIELD, "YNOCATHC.1", vm,
+			   "exception not catched in the "
+			   "catch state (use zmCatch)");
 	}
 
-	ZM_D("process_state[30] - check exception...ok");
+	if (e->kind == ZM_EXCEPTION_ERROR)
+		zm_freeTrace(e);
+
+	zm_free(zm_Exception, e);
 }
 
 
@@ -5103,9 +5027,11 @@ static zm_Yield zm_runTask(zm_VM *vm, zm_Worker *worker, zm_State *state)
 	ZM_D("runState: resume: %d iter: %d catch: %d cmd: %d",
 	     y.resume, y.iter, y.c4tch, y.cmd);
 
+	if (!checkexception)
+		return y;
+
 	/* free exception if is unlock otherwise go fatal */
-	if (checkexception)
-		zm_freeUnlockedException(vm, checkexception);
+	zm_freeUnlockedException(vm, checkexception);
 
 	return y;
 }
