@@ -18,10 +18,11 @@ ZMTASKDEF(task3)
 	zmstate 1:
 	    printf("\t\ttask3: init\n");
 	    printf("\t\ttask3: stop this task by raising continue (*)\n");
-	    zmraise zmCONTINUE(0, "test", NULL) | 2;
+	    zmraise zmCONTINUE(0, "[continue exception test]", NULL) | 2;
 
 	zmstate 2:
 	    printf("\t\ttask3: (*) unraised ... OK\n");
+	    printf("\t\ttask3: msg = `%s`\n", (const char*)zmarg);
 
 	zmstate 3:
 	    printf("\t\ttask3: no more to do ... term\n");
@@ -38,7 +39,7 @@ ZMTASKDEF(task2)
 	zmstate 1:{
 	    zm_State *s = zmNewSubTasklet(task3, NULL);
 	    printf("\ttask2: init\n");
-	    zmyield zmSUB(s) | 2;
+	    zmyield zmSUB(s, NULL) | 2;
 	}
 
 	zmstate 2:
@@ -56,7 +57,7 @@ ZMTASKDEF(task1)
 	zmstate 1:
 	    sub2 = zmNewSubTasklet(task2, NULL);
 	    printf("task1: init\n");
-	    zmyield zmSUB(sub2) | 2 | zmCATCH(3);
+	    zmyield zmSUB(sub2, NULL) | 2 | zmCATCH(3);
 
 	zmstate 2:
 	    printf("task1: term\n");
@@ -64,27 +65,25 @@ ZMTASKDEF(task1)
 
 	zmstate 3: {
 	    zm_Exception* e = zmCatch();
-	    printf("task1: catch\n");
-	    if (e)
-	        zmFreeException();
+		printf("task1: catching...%s\n", (e) ? e->msg : "[no exception]");
 	    zmyield 4;
 	}
 
 	zmstate 4:
-	    printf("task1: 1/2\n");
+	    printf("task1: some operation\n");
 	    zmyield 5;
 
 	zmstate 5:
 	    /* this resume the subtask that raise zmCONTINUE: task3 */
-	    printf("task1: 2/2\n");
-	    zmyield zmUNRAISE(sub2) | 2;
+	    printf("task1: resuming continue-exception-block\n");
+	    zmyield zmUNRAISE(sub2, "I-am-task1") | 2;
 
 	ZMEND
 }
 
 int main() {
 	zm_VM *vm = zm_newVM("test");
-	zm_resume(vm , zm_newTasklet(vm , task1, NULL));
+	zm_resume(vm , zm_newTasklet(vm , task1, NULL), NULL);
 	zm_go(vm , 100);
 	return 0;
 }

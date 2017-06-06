@@ -49,11 +49,11 @@ ZMTASKDEF( mycoroutine )
 		printf("my task: init\n");
 		self = (struct Self*)malloc(sizeof(struct Self));
 		self->iter = zmNewSubTask(myiter, NULL);
-		zmSetData(self);
+		zmData(self);
 
 	zmstate 2:
 		printf("my task: iter\n");
-		zmyield zmSUB(self->iter) | zmNEXT(2) | 3;
+		zmyield zmSUB(self->iter, NULL) | zmNEXT(2) | 3;
 
 	zmstate 3:
 		printf("my task: iter end\n");
@@ -77,7 +77,7 @@ ZMTASKDEF( mycoroutine )
 
 int main() {
 	zm_VM *vm = zm_newVM("test VM");
-	zm_resume(vm, zm_newTasklet(vm, mycoroutine, NULL));
+	zm_resume(vm, zm_newTasklet(vm, mycoroutine, NULL), NULL);
 	zm_go(vm, 100);
 	zm_closeVM(vm);
 	zm_go(vm, 100);

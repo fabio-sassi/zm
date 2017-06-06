@@ -636,7 +636,7 @@ typedef enum {
 #define zmResponse(r)                                                         \
         izmResponse(vm, (r), __FILE__, __LINE__)
 
-#define zmSetData(d)                                                          \
+#define zmData(d)                                                             \
         izmSetData(vm, d)
 
 #define zmCatch()                                                             \
@@ -693,11 +693,11 @@ typedef enum {
 #define zmCALLER     ZM_TASK_SUSPEND_AND_RESUME_CALLER
 
 /*** task ***/
-#define zmTO(x)                                                               \
-        izm_resume("zmTO", vm, (x), NULL, true, __FILE__, __LINE__)
+#define zmTO(x, arg)                                                          \
+        izm_resume("zmTO", vm, (x), (arg), true, __FILE__, __LINE__)
 
-#define zmLAST(x)                                                             \
-        izm_resume("zmLAST", vm, (x), NULL, false, __FILE__, __LINE__)
+#define zmLAST(x, arg)                                                        \
+        izm_resume("zmLAST", vm, (x), (arg), false, __FILE__, __LINE__)
 
 #define zmSUSPEND    ZM_TASK_SUSPEND
 

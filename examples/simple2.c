@@ -54,8 +54,8 @@ ZMTASKDEF( mycoroutine2 )
 
 int main() {
 	zm_VM *vm = zm_newVM("test VM");
-	zm_resume(vm, zm_newTasklet(vm, mycoroutine, NULL));
-	zm_resume(vm, zm_newTasklet(vm, mycoroutine2, NULL));
+	zm_resume(vm, zm_newTasklet(vm, mycoroutine, NULL), NULL);
+	zm_resume(vm, zm_newTasklet(vm, mycoroutine2, NULL), NULL);
 	zm_go(vm, 100);
 	zm_closeVM(vm);
 	zm_go(vm, 100);

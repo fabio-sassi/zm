@@ -932,7 +932,7 @@ static void zm_printExceptionData(zm_Print *out, zm_Exception *e)
 		zm_iprint(out, "msg: NULL\n");
 
 
-	zm_iprint(out, "ecode: %d\n", e->ecode);
+	zm_iprint(out, "ecode: %d\n", e->code);
 	zm_iprint(out, "data: [ref: %lx]\n", e->data);
 	zm_iprint(out, "beforecatch: [ref: %lx]\n", e->beforecatch);
 }
@@ -948,7 +948,7 @@ static void zm_printErrorHead(zm_Print *out, zm_Exception *e, bool errormsgmode)
 	if (errormsgmode) {
 		/** Error Message Mode **/
 		zm_iprint(out, "Exception:\n");
-		zm_iprint(out, "   (%d) \"%s\"\n", e->ecode,
+		zm_iprint(out, "   (%d) \"%s\"\n", e->code,
 		          (e->msg) ? (e->msg) : (""));
 
 	} else {
@@ -2355,7 +2355,7 @@ static zm_Exception* zm_newInnerException(uint8_t kind)
 	zm_Exception *e = zm_alloc(zm_Exception);
 	e->kind = kind;
 	e->elock = ZM_ELOCK_OFF;
-	e->ecode = 0;
+	e->code = 0;
 	e->msg = NULL;
 	e->data = NULL;
 	e->etrace = NULL;
@@ -3525,7 +3525,7 @@ static zm_Exception* zm_newException(zm_VM *vm, bool error, int ecode,
 	e->kind = (error) ? (ZM_EXCEPTION_ERROR) : (ZM_EXCEPTION_CONTINUE);
 
 	e->msg = msg;
-	e->ecode = ecode;
+	e->code = ecode;
 	e->data = data;
 
 	e->elock = ZM_ELOCK_ON;

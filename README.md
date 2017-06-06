@@ -67,7 +67,7 @@ To instance `foo` and run it:
 		zm_State* footask = zm_newTask(vm, foo, NULL);
 
 		/* footask is supended: activate it */  
-		zm_resume(vm , footask);
+		zm_resume(vm , footask, NULL);
 
 		/* run step by step */  
 		while(zm_go(vm , 1)) {
@@ -272,14 +272,14 @@ repeat every time "ptask and/or subtask".
 The different behaviour between ptask and subtask implies that a task 
 can resume:
 
-- only a subtask at a time and only within `yield` operator 
-- many ptask and also outside from `yield` operator.
+- only a subtask at a time and only within `zmyield` operator 
+- many ptask with `zm_resume` (or one with `zmTO` within `zmyield`)
 
 ```
-	zm_resume(task1); 
-	zm_resume(task2); 
-	zm_resume(task3); 
-	yield zmSUB(subtask) | 5
+	zm_resume(vm, task1, NULL); 
+	zm_resume(vm, task2, NULL); 
+	zm_resume(vm, task3, NULL); 
+	yield zmSUB(subtask, NULL) | 5
 ```
 
 ### Suspend a task:
@@ -373,13 +373,15 @@ zmstate is `ZM_TERM`:
 ZMTASKDEF(x) is a macro that create a pointer to `zm_Machine` named 
 `x`. This machine is associated to the function defined after this macro. 
 
-The function have 3 important parameters that can be used inside the 
+The function have 4 important parameters that can be used inside the 
 task definition:
 
 - **vm**: the task manager instance
 - **zmdata**: is the data associated to a task instance (can defined inside
   task or as the last parameter in `zm_newTask` and `zmNewSubTask`)
 - **zmop**: is the current zmstate
+- **zmarg**: is an optional argument passed to resume function (`zm_resume`,
+  `zmSUB`, `zmUNRAISE`, ...)
 
 
 #### Other syntax:
@@ -523,7 +525,7 @@ to ptask `zmTO`:
 			printf("task1: yield to sub\n");
 			/* this yield suspend task1 but subtask task2 will resume it
 			   yielding to end */
-			yield zmSUB(zmNewSubTasklet(task2, NULL)) | 2;
+			yield zmSUB(zmNewSubTasklet(task2, NULL), NULL) | 2;
 
 		zmstate 2:
 			printf("task1: yield to ptask\n");
@@ -540,13 +542,13 @@ to ptask `zmTO`:
 	int main() {
 		zm_VM *vm = zm_newVM("test");
 		zm_State* t = zm_newTask(vm, task1, NULL);
-		zm_resume(vm, t);
+		zm_resume(vm, t, NULL);
 
 		printf("#main: process all jobs...\n");
 		while(zm_go(vm, 1)) {}
 
 		printf("#main: no more to do...sure?\n");
-		zm_resume(vm, t);
+		zm_resume(vm, t, NULL);
 		while(zm_go(vm, 1)) {}
 
 		printf("#main: now there is no more to do\n");
@@ -575,25 +577,55 @@ output:
 
 ## Exception:
 
-There are two kind of exception:
 
-- **error exception**: zmERROR
-- **continue exception**: zmCONTINUE
+### Raise: 
 
-Exception feature and rule:
+There are two kind of exception in ZM:
+
+- **error exception**
+- **continue exception**
+
+An exception is raised with `zmraise` operator followed by:
+
+1. `zmERROR(int code, const char* msg, void *data)` for error exception
+2. `zmCONTINUE(int code, const char* msg, void *data)` for continue exception
+
+### Catch:
+
+The exception catching is perfomed declaring the exception-zmstate
+resume point with `zmCATCH` (equals to "try") and fetching the exception
+with `zmCatch` in the exception-zmstate (equals to "catch":
+
+	zmstate 1:
+		zmyield zmSUB(sub1, NULL) | 2 |  zmCATCH(3);
+
+	zmstate 2:
+		printf("sub1 perfomed without any exception");
+		zmyield zmTERM;
+
+	zmstate 3: {
+		zm_Exception* e = zmCatch();
+		if (e)
+			printf("exception: code=%d msg=%s", e->code, e->msg);
+		zmyield zmTERM;
+	}
+
+
+###Exception feature and rule:
 
 - Exceptions can be raised only inside a subtask and can be catch 
   in other subtasks or in the root-ptask.
-- An error-exception without a catch cause `zm_go` to return immediatly
+- An error-exception without a catch, cause `zm_go` to return immediatly
   `ZM_RUN_EXCEPTION`. The relative exception *must* be catch
-  with `zm_catch`.
+  with `zm_ucatch`.
 - A continue-exception without a catch will cause a fatal.
-- Exceptions caught inside task (`zmCatch()`) must be free before the next yield. 
+- In exception-zmstate, exception must be catch with `zmCatch()`
+  (before the next yield). 
 
 
 #### Error Exception:
-Error exception close all the task between the raise and the task 
-before the catch if an exception-reset is not set.
+Raising an error-exception implies the closing of all tasks between the 
+raise and the task before the catch if an exception-reset is not set.
 
 Example:
 
@@ -616,7 +648,7 @@ Example:
 		zmstate 1: {
 			zm_State *s = zmNewSubTasklet(subtask2, NULL);
 			printf("\tsubtask: init\n");
-			zmyield zmSUB(s) | 2;
+			zmyield zmSUB(s, NULL) | 2;
 		}
 		zmstate 2:
 			printf("\tsubtask: TERM");
@@ -631,7 +663,7 @@ Example:
 		zmstate 1: {
 			zm_State *s = zmNewSubTasklet(subtask, NULL);
 			printf("task: yield to subtask\n");
-			zmyield zmSUB(s) | 2 | zmCATCH(2);
+			zmyield zmSUB(s, NULL) | 2 | zmCATCH(2);
 		}
 
 		zmstate 2: {
@@ -640,7 +672,6 @@ Example:
 				printf("task: catch exception\n");
 				if (zmIsError(e))
 					zm_printError(NULL, e, 1);
-				zmFreeException();
 				zmyield zmTERM;
 			}
 			printf("task: end\n");
@@ -653,7 +684,7 @@ Example:
 
 	void main() {
 		zm_VM *vm = zm_newVM("test ZM");
-		zm_resume(vm , zm_newTasklet(vm , task, NULL));
+		zm_resume(vm , zm_newTasklet(vm , task, NULL), NULL);
 		zm_go(vm , 100);
 		zm_closeVM(vm );
 		zm_go(vm , 100);
@@ -709,70 +740,85 @@ before catch are a suspended block.
 
 This block can be resumed using:
 
-	yield zmUNRAISE(sub1) | 5;
-	yield zmSSUB(sub1) | 5;
+	yield zmUNRAISE(sub1, NULL) | 5;
+	yield zmSSUB(sub1, NULL) | 5;
 
 This commands *don't resume* `sub1` but the state who raised the 
 continue exception.
 
 Example:
-
 	zm_State *sub2;
 
-	ZMTASKDEF(task3) ZMSTART
+	ZMTASKDEF(task3)
+	{
+		ZMSTART
+
 		zmstate 1:
 			printf("\t\ttask3: init\n");
-			printf("\t\ttask3: stop by raising continue (*)\n");
-			zmraise zmCONTINUE(0, "test", NULL) | 2;
+			printf("\t\ttask3: stop this task by raising continue (*)\n");
+			zmraise zmCONTINUE(0, "[continue exception test]", NULL) | 2;
+
 		zmstate 2:
 			printf("\t\ttask3: (*) unraised ... OK\n");
+			printf("\t\ttask3: msg = `%s`\n", (const char*)zmarg);
+
 		zmstate 3:
 			printf("\t\ttask3: no more to do ... term\n");
 			zmyield zmTERM;
-	ZMEND
 
-	ZMTASKDEF(task2) ZMSTART
+		ZMEND
+	}
+
+
+	ZMTASKDEF(task2)
+	{
+		ZMSTART
+
 		zmstate 1:{
-			printf("\ttask2: init\n");
 			zm_State *s = zmNewSubTasklet(task3, NULL);
-			zmyield zmSUB(s) | 2;
+			printf("\ttask2: init\n");
+			zmyield zmSUB(s, NULL) | 2;
 		}
+
 		zmstate 2:
 			printf("\ttask2: term\n");
 			zmyield zmTERM;
-	ZMEND
 
-	ZMTASKDEF(task1) ZMSTART
-		zmstate 1: {
-			printf("task1: init\n");
+		ZMEND
+	}
+
+
+	ZMTASKDEF(task1)
+	{
+		ZMSTART
+
+		zmstate 1:
 			sub2 = zmNewSubTasklet(task2, NULL);
-			zmyield zmSUB(sub2) | 2 | zmCATCH(3);
-		}
+			printf("task1: init\n");
+			zmyield zmSUB(sub2, NULL) | 2 | zmCATCH(3);
+
 		zmstate 2:
 			printf("task1: term\n");
 			zmyield zmTERM;
+
 		zmstate 3: {
-			printf("task1: catch\n");
 			zm_Exception* e = zmCatch();
-			if (e)
-				zmFreeException();
+			printf("task1: catching...%s\n", (e) ? e->msg : "[no exception]");
 			zmyield 4;
 		}
-		zmstate 4:
-			printf("task1: 1/2\n");
-			zmyield 5;
-		zmstate 5:
-			printf("task1: 2/2\n");
-			/* this resume the raise subtask: task3 */
-			zmyield zmUNRAISE(sub2) | 2;
-	ZMEND
 
-	int main() {
-		zm_VM *vm = zm_newVM("test");
-		zm_resume(vm , zm_newTasklet(vm , task1, NULL));
-		zm_go(vm , 100);
-		return 0;
+		zmstate 4:
+			printf("task1: some operation\n");
+			zmyield 5;
+
+		zmstate 5:
+			/* this resume the subtask that raise zmCONTINUE: task3 */
+			printf("task1: resuming continue-exception-block\n");
+			zmyield zmUNRAISE(sub2, "I-am-task1") | 2;
+
+		ZMEND
 	}
+
 
 output:
 
@@ -780,10 +826,11 @@ output:
 		task2: init
 			task3: init
 			task3: stop this task by raising continue (*)
-	task1: catch
-	task1: 1/2
-	task1: 2/2
+	task1: catching...[continue exception test]
+	task1: some operation
+	task1: resuming continue-exception-block
 			task3: (*) unraised ... OK
+			task3: msg = `I-am-task1`
 			task3: no more to do ... term
 		task2: term
 	task1: term
