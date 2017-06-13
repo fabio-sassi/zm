@@ -3639,7 +3639,7 @@ static void zm_unraise(zm_VM *vm, zm_State* state, void *argument,
 }
 
 
-/**
+/*
  * e.g. yield zmUNRAISE
  */
 zm_yield_t izmUNRAISE(zm_VM *vm, zm_State* state, void *argument,
