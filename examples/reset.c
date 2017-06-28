@@ -44,7 +44,7 @@ ZMTASKDEF( subtask ) ZMSTATES
 	zmstate 1: {
 		sub2 = zmNewSubTasklet(subtask2, NULL);
 		out("* subtask: init");
-		zmyield zmSUB(sub2) | 2 |  zmRESET(3);
+		zmyield zmSUB(sub2, NULL) | 2 |  zmRESET(3);
 	}
 
 	zmstate 2:
@@ -53,7 +53,7 @@ ZMTASKDEF( subtask ) ZMSTATES
 
 	zmstate 3:
 		out("* subtask: RESET OK ... go deep");
-		zmyield zmSUB(sub2) | 4;
+		zmyield zmSUB(sub2, NULL) | 4;
 
 	zmstate 4:
 		out("* subtask: caller have reset too");
@@ -71,7 +71,7 @@ ZMTASKDEF( task ) ZMSTATES
 	zmstate 1: {
 		sub = zmNewSubTasklet(subtask, NULL);
 		out("* task: yield to subtask");
-		zmyield zmSUB(sub) | 3 | zmCATCH(2);
+		zmyield zmSUB(sub, NULL) | 3 | zmCATCH(2);
 	}
 	zmstate 2: {
 		zm_Exception *e = zmCatch();
@@ -80,9 +80,8 @@ ZMTASKDEF( task ) ZMSTATES
 			if (zmIsError(e))
 				zm_printError(NULL, e, true);
 			out("---------------------------");
-			zmFreeException();
 
-			zmyield zmSUB(sub) | 4;
+			zmyield zmSUB(sub, NULL) | 4;
 		}
 		zmyield 3;
 	}
@@ -110,9 +109,9 @@ void go(zm_VM *vm, const char *prefix)
 		switch(status) {
 		case ZM_RUN_EXCEPTION: {
 			outgo(prefix, "CATCH EXCEPTION");
-			zm_Exception *e = zm_catch(vm);
+			zm_Exception *e = zm_ucatch(vm);
 			zm_printError(NULL, e, true);
-			zm_freeError(vm, e);
+			zm_freeUncaughtError(vm, e);
 			break;
 		}
 
@@ -130,7 +129,7 @@ void go(zm_VM *vm, const char *prefix)
 
 int main() {
 	zm_VM *vm = zm_newVM("test ZM");
-	zm_resume(vm, zm_newTasklet(vm, task, NULL));
+	zm_resume(vm, zm_newTasklet(vm, task, NULL), NULL);
 	go(vm, "running");
 	zm_closeVM(vm);
 	go(vm, "closing");

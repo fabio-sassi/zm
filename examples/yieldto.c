@@ -8,12 +8,17 @@ Continue Exception raise/unraise example
 
 
 /* A task definition rappresent a generic task so can be instanced
-   as a ptask or as a subtask */
+ * as a ptask (pt) or as a subtask (sb)
+ */
 ZMTASKDEF(task2)
+
 	const char *suffix = (const char*)zmdata;
+	const char *arg = (const char*)zmarg;
+
 	ZMSTATES
+
 	zmstate 1:
-		printf("    task2 %s: init %s\n", suffix, ((const char*)zmarg));
+		printf("    task2 %s: init %s\n", suffix, arg);
 		yield zmTERM;
 
 	zmstate ZM_TERM:
@@ -23,16 +28,26 @@ ZMEND
 
 
 ZMTASKDEF(task1) ZMSTATES
-	zmstate 1:
-		printf("task1: yield to sub\n");
-		/* this yield suspend task1 but subtask task2 will resume it
-		   yielding to end */
-		yield zmSUB(zmNewSubTasklet(task2, "as sub"), "(sub)") | 2;
+	zmstate 1: {
+		zm_State *sb = zmNewSubTasklet(task2, "as sub");
 
-	zmstate 2:
+		printf("task1: yield to sub\n");
+
+		/* This yield put this task in busy-waiting mode.
+		 * When sb will yield to zmEND this task will be resumed
+		 * (in zmstate 2)
+		 */
+		yield zmSUB(sb, "(sub)") | 2;
+	}
+	zmstate 2: {
+		zm_State *pt = zm_newTasklet(vm, task2, "as ptask");
+
 		printf("task1: yield to ptask\n");
-		/* this yield suspend task1 and active task2 */
-		yield zmTO(zm_newTasklet(vm,task2, "as ptask"), "(to)") | 3;
+
+		/* This yield resume pt and simply suspend this task */
+
+		yield zmTO(pt, "(to)") | 3;
+	}
 
 	zmstate 3:
 		printf("task1: term\n");

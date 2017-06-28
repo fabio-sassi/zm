@@ -33,7 +33,7 @@
 #define __ZM_VM_H__
 
 
-#define ZM_VERSION "0.1.0"
+#define ZM_VERSION "0.1.1"
 
 #include <string.h>
 #include <stdio.h>
@@ -188,23 +188,17 @@ enum {
 /* *** EVENT MODE *** */
 #define ZM_EVENT_ACCEPTED         1 /* state will be resumed */
 #define ZM_EVENT_REFUSED          0 /* state will not be resumed */
-#define ZM_EVENT_NOW_TASK         8
-#if 0
-#define ZM_EVENT_NOW_TASKS        4
-#define ZM_EVENT_NOW0             ZM_EVENT_NOW_TASKS
-#define ZM_EVENT_NOW              ZM_EVENT_NOW0 + ZM_EVENT_NOW1
-#define ZM_EVENT_NOW1             ZM_EVENT_NOW_TASK
-#endif
 #define ZM_EVENT_STOP             32 /* stop eval other binded task */
 
-#define ZM_EVENT_UNBIND_REQUEST    256
-#define ZM_EVENT_UNBIND_TRIGGER    512
-#define ZM_EVENT_UNBIND_ABORT  1024
+#define ZM_EVENT_TRIGGER         256
+#define ZM_EVENT_UNBIND_REQUEST  512
+#define ZM_EVENT_UNBIND_ABORT    1024
+#define ZM_EVENT_UNBIND   (ZM_EVENT_UNBIND_REQUEST | ZM_EVENT_UNBIND_ABORT)
 
-#define ZM_EVENT_TRIGGER_REFUSED 0
-#define ZM_EVENT_TRIGGER_PREFETCH 1
-#define ZM_EVENT_TRIGGER_DONE 2
-
+#define ZM_TRIGGER                 ZM_EVENT_TRIGGER
+#define ZM_UNBIND_REQUEST          ZM_EVENT_UNBIND_REQUEST
+#define ZM_UNBIND_ABORT            ZM_EVENT_UNBIND_ABORT
+#define ZM_UNBIND                  ZM_EVENT_UNBIND
 
 /* **** RUN RETURN FLAG *** */
 #define ZM_RUN_IDLE 0
@@ -345,29 +339,20 @@ typedef struct zm_EventBinder_ zm_EventBinder;
 
 /* trigger event callback */
 typedef int (*zm_trigger_cb)(zm_VM *vm,
-                             void *eventdata,
-                             void *triggerargs,
-                             void *statedata,
-                             size_t counter);
-
-/* unbind event callback*/
-typedef void (*zm_unbind_cb)(zm_VM *vm,
-                             void *evendata,
-                             void *statedata,
-                             /*zm_Event *self,*/
-                             int unbindscope);
+                             int scope,
+                             zm_Event *event,
+                             zm_State *state,
+                             void **argument);
 
 
 struct zm_Event_ {
-	uint8_t flag;
+	uint32_t flag;
 
 	zm_EventBinder *bindlist;
 	size_t count;
 
 	zm_trigger_cb trigger;
-	zm_unbind_cb unbind;
 
-	zm_Exception *exception;
 	void *data;
 };
 
@@ -404,7 +389,7 @@ struct zm_Exception_ {
 	int elock;
 
 	/* ** user data*/
-	int ecode;
+	int code;
 	const char *msg;
 	void *data;
 
@@ -596,7 +581,6 @@ typedef enum {
 
 #define zm_hasFlag(s, FLAG)   ((s)->flag & FLAG)
 #define zm_hasntFlag(s, FLAG)   (((s)->flag ^ FLAG) & FLAG)
-
 
 
 
@@ -858,7 +842,7 @@ int zmyieldtrace(zm_VM* vm, const char *fn, int nl);
 
 /* inside task functions */
 
-void izmSetData(zm_VM *vm, void *data);
+void* izmSetData(zm_VM *vm, void *data);
 
 void izmResponse(zm_VM* vm, void* response, const char *filename, int nline);
 
@@ -886,12 +870,15 @@ int zmIsError(zm_Exception *e);
 
 
 /* event */
-zm_Event* zm_newEvent(zm_trigger_cb trigger, zm_unbind_cb unbind, void *data);
+zm_Event* zm_newEvent(zm_trigger_cb trigger, int triggerscope, void *data);
 
 void zm_freeEvent(zm_VM *vm, zm_Event *event);
 
-int zm_trigger(zm_VM *vm, zm_Event *event, void *argument);
+size_t zm_trigger(zm_VM *vm, zm_Event *event, void *argument);
 
+size_t zm_unbindAll(zm_VM *vm, zm_Event *event, void *argument);
+
+size_t zm_unbind(zm_VM *vm, zm_Event *event, zm_State* s, void *argument);
 
 /* functions */
 zm_yield_t izm_resume(const char *fname, zm_VM* vm, zm_State *s, void *argument,
@@ -911,6 +898,8 @@ void zm_abort(zm_VM *vm, zm_State *state);
 size_t zm_getDeep(zm_State *s);
 
 zm_State* zm_getCaller(zm_State *s);
+
+zm_State* zm_getCurrent(zm_VM *vm);
 
 zm_Exception *zm_ucatch(zm_VM *vm);
 

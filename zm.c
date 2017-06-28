@@ -117,7 +117,7 @@ zm_State* izmGetRoot(zm_VM *vm)
 	zm_State *s = zm_getCurrentState(vm);
 
 	if (zm_isTask(s))
-		return NULL;
+		return s;
 
 	return s->parent->stack[0];
 }
@@ -142,6 +142,13 @@ zm_State* izmGetCaller(zm_VM *vm)
 	return zm_getCaller(zm_getCurrentState(vm));
 }
 
+zm_State* zm_getCurrent(zm_VM *vm)
+{
+   if (!vm->plock)
+	   return NULL;
+
+   return zm_getCurrentState(vm);
+}
 
 void* izmGetCallerData(zm_VM *vm)
 {
@@ -1930,9 +1937,10 @@ static void zm_setStateArgument(zm_State *s, void *argument)
 	s->rearg = argument;
 }
 
-void izmSetData(zm_VM *vm, void *data)
+void* izmSetData(zm_VM *vm, void *data)
 {
 	vm->currentsession.state->data = data;
+	return data;
 }
 
 
@@ -3755,19 +3763,17 @@ static void zm_bindEvent(zm_Event *event, zm_State *s)
 	}
 }
 
-static const char* zm_getUnbindEventScope(uint8_t flag)
+static const char* zm_getUnbindEventScope(uint32_t flag)
 {
 	if (flag & ZM_EVENT_UNBIND_REQUEST)
-		return "REQUEST";
-
-	if (flag & ZM_EVENT_UNBIND_TRIGGER)
-		return "TRIGGER";
+		return "ZM_UNBIND_REQUEST";
 
 	if (flag & ZM_EVENT_UNBIND_ABORT)
-		return "ABORT";
+		return "ZM_UNBIND_ABORT";
 
-
-	return "??UNBIND_SCOPE_UNKNOW??";
+	/* this is impossible because unbindEvent is call only in lock and
+	   implode and in unbind request with defined (const) scope value */
+	return "[internal error]";
 }
 
 
@@ -3775,6 +3781,7 @@ static const char* zm_getUnbindEventScope(uint8_t flag)
 static void zm_unbindEvent(zm_VM* vm, zm_State *s, void* argument, int scope)
 {
 	zm_EventBinder *evb = ((zm_EventBinder*)s->next);
+	int unbindscope = (scope & ZM_EVENT_UNBIND);
 
 	ZM_D("zm_unbindEvent: check flag");
 
@@ -3784,11 +3791,11 @@ static void zm_unbindEvent(zm_VM* vm, zm_State *s, void* argument, int scope)
 		zm_fatalDo(ZM_FATAL_UN, "UNBNDEV", NULL,
 		           "event unbind (scope = %s): state doesn't "
 		           " have a binded event",
-		           zm_getUnbindEventScope(evb->event->flag));
+		           zm_getUnbindEventScope(unbindscope));
 	}
 
-	if (evb->event->unbind)
-		evb->event->unbind(vm, evb->event->data, s->data, scope);
+	if ((unbindscope) && (evb->event->trigger))
+		evb->event->trigger(vm, unbindscope, evb->event, s, &argument);
 
 
 	/* check if evb is the first element of the bindlist*/
@@ -3834,31 +3841,6 @@ static void zm_triggerWrongReturn(zm_VM *vm, int r)
 		           "pre-fetch");
 	}
 
-	#if 0
-	if ((r & ZM_EVENT_NOW) ==  ZM_EVENT_NOW) {
-		zm_fatalOn("zm_trigger", NULL, 0);
-		zm_fatalDo(ZM_FATAL_ERROR, "TRIG.WRNGFLG.2", vm,
-		           "cannot use ZM_EVENT_NOW in trigger "
-		           "pre-fetch");
-	}
-	#endif
-
-	if (r & ZM_EVENT_NOW_TASK) {
-		zm_fatalOn("zm_trigger", NULL, 0);
-		zm_fatalDo(ZM_FATAL_ERROR, "TRIG.WRNGFLG.3", vm,
-		           "cannot use ZM_EVENT_NOW_TASK in "
-		           "trigger pre-fetch");
-	}
-
-	#if 0
-	if (r & ZM_EVENT_NOW_TASKS) {
-		zm_fatalOn("zm_trigger", NULL, 0);
-		zm_fatalDo(ZM_FATAL_ERROR, "TRIG.WRNGFLG.4", vm,
-		           "cannot use ZM_EVENT_NOW_TASKS in "
-		           "trigger pre-fetch");
-	}
-	#endif
-
 	zm_fatalOn("zm_trigger", NULL, 0);
 	zm_fatalDo(ZM_FATAL_ERROR, "TRIG.WRNGFLG.5", vm,
 	           "invalid return in trigger callback use: "
@@ -3866,125 +3848,104 @@ static void zm_triggerWrongReturn(zm_VM *vm, int r)
 }
 
 
-static int zm_triggerEVB(zm_VM *vm, zm_Event *event, void *argument, int i,
-                                                       zm_EventBinder *evb)
+static int zm_triggerEVB(zm_VM *vm, zm_EventBinder *evb, void *arg)
 {
-	zm_Worker *unbinded = NULL;
-	int r;
+	zm_Event *event = evb->event;
+	zm_State *s = evb->owner;
+	int r = ZM_EVENT_ACCEPTED;
 
-	if (!event->trigger) {
-		/* no trigger callback: resume state */
-		zm_unbindEvent(vm, evb->owner, argument,
-		               ZM_EVENT_UNBIND_TRIGGER |
-		               ZM_EVENT_ACCEPTED);
-		return false;
+	if (zm_hasFlag(event, ZM_EVENT_TRIGGER) && (event->trigger)) {
+		ZM_D("zm_trigger: cb(state = [ref %lx])", s);
+
+		r = event->trigger(vm, ZM_EVENT_TRIGGER, event, s, &arg);
+
+		/* event trigger can return ZM_EVENT_ACCEPT or ZM_EVENT_REFUSE:
+		   if the event is accepted the relative task will be resumed
+		   otherwise task still wait. The trigger callback can modify
+		   the argument but this modify affect only one resume.
+		 */
+
+		if (r & ZM_EVENT_REFUSED)
+			return r;
 	}
 
-	/* ACCEPT accept the event for a single task -> resume task*/
-	/* REFUSE leave the event binded and task waiting*/
-	/* EXCEPTION resume task raising an exception*/
-	/* STOP stop fetch other event-task*/
+	/* no trigger callback: resume state */
+	zm_unbindEvent(vm, s, arg, ZM_EVENT_TRIGGER | ZM_EVENT_ACCEPTED);
 
-	ZM_D("zm_trigger: cb(state = [ref %lx])", evb->owner);
-	r = event->trigger(vm, event->data, argument, evb->owner->data, i);
-
-	ZM_D("zm_trigger: result = %d\n", r);
-
-	/* main selection accepted, exception, refused */
-
-	if (r & ZM_EVENT_ACCEPTED) {
-		unbinded = ((zm_Worker*)evb->statenext);
-
-		ZM_D("zm_trigger: ACCEPTED - w = %s", unbinded->machine->name);
-
-		#if 0
-		zm_unbindEvent(vm, evb->owner, argument,
-				ZM_EVENT_UNBIND_TRIGGER |
-				ZM_EVENT_ACCEPTED |
-				(r & ZM_EVENT_NOW));
-		zm_unbindEvent(vm, evb->owner, argument,
-		               ZM_EVENT_UNBIND_TRIGGER |
-		               ZM_EVENT_ACCEPTED |
-		               (r & ZM_EVENT_NOW_TASK));
-		#endif
-		zm_unbindEvent(vm, evb->owner, argument,
-		               ZM_EVENT_UNBIND_TRIGGER |
-		               ZM_EVENT_ACCEPTED);
-	}
-
-	/*** secondary flags to be processed in trigger ***/
-
-	if (r & ZM_EVENT_STOP) {
-		return true;
-	}
-
-	return false;
+	return r;
 }
 
+static int zm_trigger0(zm_VM *vm, zm_Event *event, void **arg)
+{
+	ZM_D("zm_trigger0:");
+	if (zm_hasFlag(event, ZM_EVENT_TRIGGER) && (event->trigger))
+		return event->trigger(vm, ZM_EVENT_TRIGGER, event, NULL, arg);
+	ZM_D("zm_trigger0: no callback event->flag = %d cb = %lx", event->flag,
+	     event->trigger);
+
+	return ZM_EVENT_ACCEPTED;
+}
 /*
  * argument will be passed to trigger callback (if set) and as zmarg to
  * binded tasks that will accept this event
  */
-int zm_trigger(zm_VM *vm, zm_Event *event, void *argument)
+size_t zm_trigger(zm_VM *vm, zm_Event *event, void *argument)
 {
 	zm_EventBinder *evb, *nextevb;
-	int r, n, i = 0;
+	int r, n, count = 0;
 
 	ZM_D("zm_trigger: PRE-FETCH");
-	if (event->trigger) {
-		/*** trigger pre-fetch ***/
 
-		/* pass event count*/
-		r = event->trigger(vm, event->data, argument, NULL,
-		                   event->count);
+	/*** trigger pre-fetch ***/
+	r = zm_trigger0(vm, event, &argument);
 
-		/* In pre-fetch ACCEPTED/REFUSE value accept/refuse (filter) */
-		/* the trigger action */
-		switch (r) {
-		case ZM_EVENT_ACCEPTED:
-			break;
+	/* In pre-fetch ZM_EVENT_ACCEPTED and ZM_EVENT_REFUSE act as a filter
+	   to accept the entire trigger action. Prefetch can modify
+	   argument for successive call.
+	 */
+	switch (r) {
+	case ZM_EVENT_ACCEPTED:
+		break;
 
-		case ZM_EVENT_REFUSED:
-			return ZM_EVENT_TRIGGER_REFUSED;
+	case ZM_EVENT_REFUSED:
+		return 0;
 
-		default:
-			zm_triggerWrongReturn(vm, r);
-		}
+	default:
+		zm_triggerWrongReturn(vm, r);
 	}
 
-
-	ZM_D("zm_trigger: FETCH");
 
 	evb = event->bindlist;
 
-	if (!evb) {
-		return ZM_EVENT_TRIGGER_PREFETCH;
-	}
+	if (!evb)
+		return 0;
 
 	n = event->count;
 
 	do {
-		ZM_D("zm_trigger: fetch trigger %d", i);
 		/*** trigger fetch ***/
+		ZM_D("zm_trigger: fetch trigger %d", n);
 
 		/* save evb->next because unbind free evb (note: evb is
 		 * a ring linked list, when evb contain only one element
 		 * nextevb == evb this can't be a problem because in this
-		 * situation do while end */
+		 * situation do-while end */
 		nextevb = evb->next;
 
-		if (zm_triggerEVB(vm, event, argument, i, evb)) {
+		r = zm_triggerEVB(vm, evb, argument);
+
+		if (r & ZM_EVENT_ACCEPTED)
+			count++;
+
+
+		if (r & ZM_EVENT_STOP) /* stop fetching other task */
 			break;
-		}
 
 		evb = nextevb;
+		ZM_D("zm_trigger: cycle end %d", n);
+	} while (--n > 0);
 
-		ZM_D("zm_trigger: cycle end %d", i);
-		i++;
-	} while (i < n);
-
-
-	return ZM_EVENT_TRIGGER_DONE;
+	return count;
 }
 
 
@@ -4218,70 +4179,66 @@ int zm_freeState(zm_VM *vm, zm_State *state)
 	return zm_requestFreeState(vm, state, "zm_freeState");
 }
 
-zm_Event* zm_newEvent(zm_trigger_cb trigger, zm_unbind_cb unbind, void *data)
+zm_Event* zm_newEvent(zm_trigger_cb trigger, int triggerscope, void *data)
 {
 	zm_Event *event = zm_alloc(zm_Event);
 
-	event->flag = 0;
+	/* TODO check consitency between trigger and triggerscope argument */
+
 	event->bindlist = NULL;
 	event->count = 0;
-	event->unbind = unbind;
+	event->flag = triggerscope;
 	event->trigger = trigger;
 	event->data = data;
 
 	return event;
 }
 
-/*
-   TODO TODO TODO
-   TODO TODO TODO
-   TODO TODO TODO
-   TODO TODO TODO
-   TODO TODO TODO
-   TODO TODO TODO
-   TODO TODO TODO
-   TODO TODO TODO
-
-   QUESTO CREDO SIA UN ERRORE CONCETTUALE, cioè il free non può fare lui
-   un unbind questa funzione qui sotto deve essere una azione specifica
-   sull'evento, da valutare se c'è una regola generale nella libreria
-   a riguardo e uniformare
-
-   In questo contesto allore è vero che è un ZM_EVENT_UNBIND_REQUEST
-   altrimenti è ambiguo tra un abort, un request oppure qualcosa di
-   diverso
-   TODO TODO TODO
-   TODO TODO TODO
-   TODO TODO TODO
-   TODO TODO TODO
- */
-void zm_freeEvent(zm_VM *vm, zm_Event *event)
+size_t zm_unbindAll(zm_VM *vm, zm_Event *event, void *argument)
 {
-	size_t i = 0;
+	size_t n = event->count;
 
 	while(event->bindlist) {
-		zm_unbindEvent(vm, event->bindlist->owner, NULL,
-		               ZM_EVENT_UNBIND_REQUEST);
-
-		#ifdef ZM_CHECK_CONSISTENCY
-		if (i >= event->count) {
-			zm_fatalDo(ZM_FATAL_UN, "FREEEV.CGT", vm,
-			           "event counter bind list check fail");
-		}
-		#endif
-		i++;
+		zm_State *s = event->bindlist->owner;
+		zm_unbindEvent(vm, s, argument, ZM_EVENT_UNBIND_REQUEST);
 	}
 
 	#ifdef ZM_CHECK_CONSISTENCY
-	if ((i-1) != event->count) {
-		zm_fatalDo(ZM_FATAL_UN, "FREEEV.CEQ", vm,
-		           "event counter bind list check fail");
+	if (event->count != 0) {
+		zm_fatalDo(ZM_FATAL_UN, "UNBIND.STL", vm,
+			   "event counter bind list check fail");
 	}
 	#endif
 
-	/* event has no more binded task: unregister */
-	if (event->unbind)
-		event->unbind(vm, event->data, NULL, ZM_EVENT_UNBIND_REQUEST);
+	return n;
+}
+
+size_t zm_unbind(zm_VM *vm, zm_Event *event, zm_State* s, void *argument)
+{
+
+	if (!s)
+		return zm_unbindAll(vm, event, argument);
+
+	if (zm_hasntFlag(s, ZM_STATEFLAG_EVENTLOCKED))
+		return 0;
+
+	zm_unbindEvent(vm, s, argument, ZM_EVENT_UNBIND_REQUEST);
+	return 1;
+}
+
+
+void zm_freeEvent(zm_VM *vm, zm_Event *event)
+{
+	if (event->count) {
+		zm_fatalOn("zm_freeEvent", NULL, 0);
+		zm_fatalDo(ZM_FATAL_ERROR, "FREEEV.NE", vm,
+		           "Try to free an event with some binded task");
+	}
+
+
+	if (zm_hasFlag(event, ZM_EVENT_UNBIND) && (event->trigger))
+		event->trigger(vm, ZM_EVENT_UNBIND_REQUEST, event, NULL, NULL);
+
 
 	zm_free(zm_Event, event);
 }

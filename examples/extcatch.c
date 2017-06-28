@@ -33,7 +33,7 @@ ZMTASKDEF( subtask ) ZMSTATES
 	zmstate 1: {
 		zm_State *s = zmNewSubTasklet(subtask2, NULL);
 		out("* subtask: init");
-		zmyield zmSUB(s) | 2;
+		zmyield zmSUB(s, NULL) | 2;
 	}
 
 	zmstate 2:
@@ -52,22 +52,11 @@ ZMTASKDEF( task ) ZMSTATES
 	zmstate 1: {
 		zm_State *s = zmNewSubTasklet(subtask, NULL);
 		out("* task: yield to subtask");
-		zmyield zmSUB(s) | 3; //| zmCATCH(2);
+		zmyield zmSUB(s, NULL) | 2;
 	}
-	zmstate 2: {
-		zm_Exception *e = zmCatch();
-		if (e) {
-			out("* task: catch exception");
-			if (zmIsError(e))
-				zm_printError(NULL, e, true);
-			out("---------------------------");
-			zmFreeException();
-			zmyield 3;
-		}
-		zmyield 3;
-	}
-	zmstate 3:
-		out("* task: 3");
+
+	zmstate 2:
+		out("* task: 2");
 		zmyield zmTERM;
 
 	zmstate ZM_TERM:
@@ -86,9 +75,9 @@ void go(zm_VM *vm)
 		switch(status) {
 		case ZM_RUN_EXCEPTION: {
 			out("~~~ zm_go: CATCH EXCEPTION");
-			zm_Exception *e = zm_catch(vm);
+			zm_Exception *e = zm_ucatch(vm);
 			zm_printError(NULL, e, true);
-			zm_freeError(vm, e);
+			zm_freeUncaughtError(vm, e);
 			break;
 		}
 
@@ -107,7 +96,7 @@ void go(zm_VM *vm)
 
 int main() {
 	zm_VM *vm = zm_newVM("test ZM");
-	zm_resume(vm, zm_newTasklet(vm, task, NULL));
+	zm_resume(vm, zm_newTasklet(vm, task, NULL), NULL);
 	go(vm);
 	zm_closeVM(vm);
 	go(vm);
