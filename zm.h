@@ -342,7 +342,7 @@ typedef int (*zm_event_cb)(zm_VM *vm,
                            int scope,
                            zm_Event *event,
                            zm_State *state,
-                           void **argument);
+                           void *argument);
 
 
 struct zm_Event_ {

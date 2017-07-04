@@ -678,7 +678,7 @@ This avoid race-condition during resource free.
 
 ### Free tasks:
 
-A task can be free only if it have just receive a *close*. The commands to
+A task can be free only if it has just receive a *close*. The commands to
 free a task are:
 
 	/* free a ptask */
@@ -813,7 +813,6 @@ output:
 
 ## Exception:
 
-
 ### Raise: 
 
 There are two kind of exception in ZM:
@@ -825,6 +824,17 @@ An exception is raised with `zmraise` operator followed by:
 
 1. `zmERROR(int code, const char* msg, void *data)` for error exception
 2. `zmCONTINUE(int code, const char* msg, void *data)` for continue exception
+
+
+### Exception struct:
+
+	typedef struct {
+		int code;        /* the exception user code */
+		const char* msg; /* the user message string */
+		void *data;      /* user data */
+		/* private fields */ 
+	} zm_Exception;
+
 
 ### Catch:
 
@@ -1128,14 +1138,19 @@ A task can be suspended waiting a virtual event:
 A virtual event keep one or more task in a waiting state until a trigger
 or an unbind resume them. 
 
+### Event struct:
+
+	typedef struct {
+		void *data;    /* event user data */
+		size_t count;  /* binded tasks count */
+		/* private fields */ 
+	} zm_Event;
 
 ### Create an Event:
-To create an event:
 
 	zm_Event *event = zm_newEvent(data);
 
 `data` is `void *` pointer that can be accessible from `event->data`
-
 
 ### Bind an event to a task:
 
@@ -1199,7 +1214,7 @@ A shortcut for all unbind operation is `ZM_UNBIND` equivalent to
 The event callback is a function with this format:
 
 	int (*zm_event_cb)(zm_VM *vm, int scope, zm_Event *e, zm_State *state,
-	                                                           void **arg)
+	                                                            void *arg)
 
 Where:
 
@@ -1207,15 +1222,12 @@ Where:
 - `scope` is the scope where the callback has just been invoked (it 
   can assume only one of the scope flag value).
 - `arg` is:
-	- a pointer to the resume argument of `zm_trigger`
-	  in `ZM_TRIGGER` scope.
-	- a pointer to the resume argument of unbind command 
-	  in `ZM_UNBIND_REQUEST` scope.
-	- null in `ZM_UNBIND_ABORT` scope.
+	- the resume argument of `zm_trigger` in `ZM_TRIGGER` scope
+	- the resume argument of unbind command in `ZM_UNBIND_REQUEST` scope
+	- null in `ZM_UNBIND_ABORT` scope
 
 
-This callback can manage only task data, event data and argument.
-Use a ZM function inside the callback can produce impredicable 
+**WARNING:** Use a ZM function inside the callback can produce impredicable 
 behaviour.
 
 
@@ -1256,7 +1268,7 @@ Also in fetch mode the callback function must return one of this two value
 but can also add `ZM_EVENT_STOP` modifier to stop to fetch any other binded
 task.
 
-	int randcb(zm_VM *vm, int scope, zm_Event *e, zm_State *s,void **arg)
+	int randcb(zm_VM *vm, int scope, zm_Event *e, zm_State *s, void **arg)
 	{
 		if (scope != ZM_TRIGGER) 
 			return 0;
@@ -1284,16 +1296,13 @@ task.
 	}
 
 
-The resume argument pointer can be replaced with another pointer or nullified.
-In fetch mode this modify affect only the resume of the current binded task
-while in pre-fetch affect all the successive fetch requests.
 
 #### The unbind callback:
 
 An unbind callback is an event callback with the scope flag `ZM_UNBIND_REQUEST` 
 and/or `ZM_UNBIND_ABORT`.
 
-The unbind callback is used only to perform syncronous operation, it have
+The unbind callback is used only to perform syncronous operation, it has
 not filtering purpose (as trigger callback). For this reason the return 
 value have no meaning.
 
@@ -1304,8 +1313,8 @@ Unbind callback is relative to these scopes:
   (`zm_unbind`, `zm_unbindAll` and `zm_freeEvent`)
 - `ZM_UNBIND_ABORT` is used during close operations
 
-The unbind callback is invoked for each binded task and return the number
-of unbinded task.
+The unbind callback is invoked for each binded tasks and return the number
+of unbinded tasks.
 
 `zm_freeEvent` perform a last `ZM_UNBIND_REQUEST` with a null binded task.
 This is a **post fetch** or **pre free** operation before free the event.
@@ -1322,7 +1331,15 @@ This is a **post fetch** or **pre free** operation before free the event.
 	}
 
 
-#### Event callback example:
+### Free an Event:
+
+	zm_freeEvent(vm, event);
+
+An event can be free only if it has not more binded tasks.
+
+
+### Event callback example:
+
 	typedef struct {
 		int id;
 	} TaskData;
@@ -1336,10 +1353,9 @@ This is a **post fetch** or **pre free** operation before free the event.
 		return ((TaskData*)(s->data))->id;
 	}
 
-	int eventcb(zm_VM *vm, int scope, zm_Event* e, zm_State *s, void **arg)
+	int eventcb(zm_VM *vm, int scope, zm_Event* e, zm_State *s, void *arg)
 	{
-		const char *msg = ((arg) ? ((const char*)(*arg)) : ("null"));
-		msg = (msg) ? (msg) : "";
+		const char *msg = ((arg) ? ((const char*)arg) : ("null"));
 		printf("\tcallback: arg = `%s` scope = ", msg);
 
 		if (scope & ZM_UNBIND_REQUEST)
@@ -1354,26 +1370,18 @@ This is a **post fetch** or **pre free** operation before free the event.
 		printf("\n");
 
 		if (!s) {
-			/* a modify of arg in pre-fetch affect all fetches */
-			if (scope & ZM_TRIGGER)
-				*arg = "two";
-
 			if (scope & ZM_TRIGGER)
 				printf("\t\t-> pre-fetch\n");
 			else
-				printf("\t\t-> pre-free\n");
+				printf("\t\t-> post-fetch (pre-free)\n");
 
 			return ZM_EVENT_ACCEPTED;
 		}
 
 		printf("\t\t-> fetch task %d ", getID(s));
 
-
-		if (getID(s) == 1) {
-			/* a modify of arg in fetch affect only current fetch */
-			*arg = "three";
-			if (scope & ZM_TRIGGER)
-				printf("(accepted)\n");
+		if ((scope & ZM_TRIGGER) && (getID(s) == 1)) {
+			printf("(accepted)\n");
 			return ZM_EVENT_ACCEPTED;
 		}
 
@@ -1401,8 +1409,7 @@ This is a **post fetch** or **pre free** operation before free the event.
 			zmyield zmEVENT(event) | 2 | zmUNBIND(3);
 
 		zmstate 2:
-			printf("task %d: msg = `%s`\n", self->id, 
-			       (const char*)zmarg);
+			printf("task %d: msg = `%s`\n", self->id, (const char*)zmarg);
 			zmyield zmTERM;
 
 		zmstate 3:
@@ -1440,7 +1447,7 @@ This is a **post fetch** or **pre free** operation before free the event.
 		while(zm_go(vm, 1));
 
 		printf("\n* trigger event:\n");
-		zm_trigger(vm, event, "one");
+		zm_trigger(vm, event, "Hello");
 		printf("\n* unbind s4:\n");
 		zm_unbind(vm, event, s4, "I don't wait anymore");
 
@@ -1467,11 +1474,11 @@ output:
 	task 5: -init-
 
 	* trigger event:
-		callback: arg = `one` scope = TRIGGER 
+		callback: arg = `Hello` scope = TRIGGER 
 			-> pre-fetch
-		callback: arg = `two` scope = TRIGGER 
+		callback: arg = `Hello` scope = TRIGGER 
 			-> fetch task 1 (accepted)
-		callback: arg = `two` scope = TRIGGER 
+		callback: arg = `Hello` scope = TRIGGER 
 			-> fetch task 2 (accepted but stop other fetches)
 
 	* unbind s4:
@@ -1479,8 +1486,8 @@ output:
 			-> fetch task 4 
 
 
-	task 1: msg = `three`
-	task 2: msg = `two`
+	task 1: msg = `Hello`
+	task 2: msg = `Hello`
 	task 4: event aborted - msg = `I don't wait anymore`
 	task 1: -end-
 	task 2: -end-
@@ -1488,9 +1495,9 @@ output:
 
 	* close all tasks:
 
-		callback: arg = `` scope = UNBIND_ABORT 
+		callback: arg = `null` scope = UNBIND_ABORT 
 			-> fetch task 5 
-		callback: arg = `` scope = UNBIND_ABORT 
+		callback: arg = `null` scope = UNBIND_ABORT 
 			-> fetch task 3 
 	task 5: -end-
 	task 3: -end-
@@ -1498,9 +1505,8 @@ output:
 	* free event:
 
 		callback: arg = `null` scope = UNBIND_REQUEST 
-			-> pre-free
+			-> post-fetch (pre-free)
 
-	
 
 
 ## Run:

@@ -31,7 +31,7 @@ int getID(zm_State *s)
 }
 
 
-int acquirecb(zm_VM *vm, int scope, zm_Event* event, zm_State *s, void **arg)
+int acquirecb(zm_VM *vm, int scope, zm_Event* event, zm_State *s, void *arg)
 {
 	Lock *lock = (Lock*)(event->data);
 

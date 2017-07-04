@@ -15,10 +15,9 @@ int getID(zm_State *s)
 	return ((TaskData*)(s->data))->id;
 }
 
-int eventcb(zm_VM *vm, int scope, zm_Event* e, zm_State *s, void **arg)
+int eventcb(zm_VM *vm, int scope, zm_Event* e, zm_State *s, void *arg)
 {
-	const char *msg = ((arg) ? ((const char*)(*arg)) : ("null"));
-	msg = (msg) ? (msg) : "";
+	const char *msg = ((arg) ? ((const char*)arg) : ("null"));
 	printf("\tcallback: arg = `%s` scope = ", msg);
 
 	if (scope & ZM_UNBIND_REQUEST)
@@ -33,26 +32,18 @@ int eventcb(zm_VM *vm, int scope, zm_Event* e, zm_State *s, void **arg)
 	printf("\n");
 
 	if (!s) {
-		/* a modify of arg in pre-fetch affect all fetches */
-		if (scope & ZM_TRIGGER)
-			*arg = "two";
-
 		if (scope & ZM_TRIGGER)
 			printf("\t\t-> pre-fetch\n");
 		else
-			printf("\t\t-> pre-free\n");
+			printf("\t\t-> post-fetch (pre-free)\n");
 
 		return ZM_EVENT_ACCEPTED;
 	}
 
 	printf("\t\t-> fetch task %d ", getID(s));
 
-
-	if (getID(s) == 1) {
-		/* a modify of arg in fetch affect only current fetch */
-		*arg = "three";
-		if (scope & ZM_TRIGGER)
-			printf("(accepted)\n");
+	if ((scope & ZM_TRIGGER) && (getID(s) == 1)) {
+		printf("(accepted)\n");
 		return ZM_EVENT_ACCEPTED;
 	}
 
@@ -118,7 +109,7 @@ int main() {
 	while(zm_go(vm, 1));
 
 	printf("\n* trigger event:\n");
-	zm_trigger(vm, event, "one");
+	zm_trigger(vm, event, "Hello");
 	printf("\n* unbind s4:\n");
 	zm_unbind(vm, event, s4, "I don't want to wait anymore");
 

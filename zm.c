@@ -3808,7 +3808,7 @@ static void zm_unbindEvent(zm_VM* vm, zm_State *s, void* argument, int scope)
 	}
 
 	if ((unbindscope) && (evb->event->evcb))
-		evb->event->evcb(vm, unbindscope, evb->event, s, &argument);
+		evb->event->evcb(vm, unbindscope, evb->event, s, argument);
 
 
 	/* check if evb is the first element of the bindlist*/
@@ -3873,7 +3873,7 @@ static int zm_triggerEVB(zm_VM *vm, zm_EventBinder *evb, void *arg)
 	if (zm_hasFlag(event, ZM_EVENT_TRIGGER) && (event->evcb)) {
 		ZM_D("zm_trigger: cb(state = [ref %lx])", s);
 
-		r = event->evcb(vm, ZM_EVENT_TRIGGER, event, s, &arg);
+		r = event->evcb(vm, ZM_EVENT_TRIGGER, event, s, arg);
 
 		/* event trigger can return ZM_EVENT_ACCEPT or ZM_EVENT_REFUSE:
 		   if the event is accepted the relative task will be resumed
@@ -3891,11 +3891,13 @@ static int zm_triggerEVB(zm_VM *vm, zm_EventBinder *evb, void *arg)
 	return r;
 }
 
-static int zm_trigger0(zm_VM *vm, zm_Event *event, void **arg)
+static int zm_trigger0(zm_VM *vm, zm_Event *event, void *arg)
 {
 	ZM_D("zm_trigger0:");
+
 	if (zm_hasFlag(event, ZM_EVENT_TRIGGER) && (event->evcb))
 		return event->evcb(vm, ZM_EVENT_TRIGGER, event, NULL, arg);
+
 	ZM_D("zm_trigger0: no callback event->flag = %d cb = %lx", event->flag,
 	     event->evcb);
 
@@ -3913,7 +3915,7 @@ size_t zm_trigger(zm_VM *vm, zm_Event *event, void *argument)
 	ZM_D("zm_trigger: PRE-FETCH");
 
 	/*** trigger pre-fetch ***/
-	r = zm_trigger0(vm, event, &argument);
+	r = zm_trigger0(vm, event, argument);
 
 	/* In pre-fetch ZM_EVENT_ACCEPTED and ZM_EVENT_REFUSE act as a filter
 	   to accept the entire trigger action. Prefetch can modify
