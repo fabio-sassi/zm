@@ -1,9 +1,7 @@
-/*
-Fabio Sassi 100% Public Domain
-simple zm lib task/coroutine example
-*/
 #include <stdlib.h>
 #include <zm.h>
+
+/* simple zm lib task/coroutine example */
 
 ZMTASKDEF( Foo )
 {

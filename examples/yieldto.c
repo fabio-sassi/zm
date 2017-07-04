@@ -1,7 +1,3 @@
-/*
-Fabio Sassi 100% Public Domain
-Continue Exception raise/unraise example
-*/
 #include <stdlib.h>
 #define ZM_FAST_SYNTAX 1
 #include <zm.h>

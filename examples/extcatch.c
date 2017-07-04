@@ -1,12 +1,5 @@
-/*
-Fabio Sassi 100% Public Domain
-Error Exception catch example
-*/
-
-#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <zm.h>
 
 void out(const char *m)

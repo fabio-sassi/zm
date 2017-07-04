@@ -31,11 +31,15 @@ This folder contain some ZM examples
 
 ### Continue Exception:
 
-- An example about raising and unraising a continue exeception: [unraise.c](unraise.c)
+- Raise and unraise a continue exception: [unraise.c](unraise.c)
+- Uppercase the best matching substring pattern within a text (avanced example): [search.c](search.c)
 
 ### Events:
 
-- Hello world with and an event [waitinghelloworlds.c](waitinghelloworlds.c)
-- Trigger and unbind event callback [trigcb.c](trigcb.c) 
-- A simple lock/unlock system [lock.c](lock.c) 
+- Hello world with an event [waitinghelloworlds.c](waitinghelloworlds.c)
+- Trigger and unbind event callback [eventcb.c](eventcb.c) 
+- A simple task lock system [lock.c](lock.c)
+- A bit more advanced task lock system with force unlock and owner check
+  [lock2.c](lock2.c)
+  
 

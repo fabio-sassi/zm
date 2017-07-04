@@ -3,9 +3,9 @@
 ZM is a C library to handle [continuations](https://en.wikipedia.org/wiki/Continuation) ([coroutine](https://en.wikipedia.org/wiki/Coroutine), exception, [green thread](https://en.wikipedia.org/wiki/Green_threads)) with finite state machines.
 
 The library is written in *C99* without external dependecy or 
-machine-specific code but can also be compiled in *ansi-c* or *ansi-c++* 
-with the minal effort to define two unsigned int type
-(`uint8_t` and `uint32_t`).
+machine-specific and can be compiled also in *ansi-c* or *ansi-c++* 
+with the minal effort to define two unsigned int type (`uint8_t`,
+`uint32_t`).
 
 
 This library is a part of a full text search event driven engine
@@ -41,8 +41,7 @@ Moreover library doesn't require any external or OS specific libraries.
 		ZMEND			
 	}
 
-This piece of code define the machine `foo` that rappresent a **task class**
-or **machine**.
+This piece of code define the machine `foo` that rappresent a **task class**.
 
 The code in this task class is split in 4 blocks (`zmstate`). 
 The `zmyield` operator suspend the current task execution and 
@@ -89,7 +88,7 @@ output:
 - Yield to events.
 - Suspend, resume, term a task.
 - Raise error exceptions.
-- Raise continue exception: this freeze all tasks between the 
+- Raise continue exceptions: these freeze all tasks between the 
   raise and the catch point and threats this freezed block as a single 
   suspended task that can be resumed with an *unraise* operation.
 - It is developed keeping in mind an event driven model and C10K problem

@@ -1,13 +1,8 @@
-/*
-Fabio Sassi 100% Public Domain
-Continue Exception raise/unraise example
-*/
-
-#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <zm.h>
+
+/* Continue exception raise/unraise example */
 
 zm_State *sub2;
 

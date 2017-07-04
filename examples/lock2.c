@@ -1,7 +1,7 @@
 #include <stdlib.h>
 #include <zm.h>
 
-#define NTASKS 4
+#define NTASKS 8
 
 typedef struct {
 	int id;
@@ -9,6 +9,7 @@ typedef struct {
 
 typedef struct {
 	zm_Event *ev;
+	zm_State *owner;
 	int locked;
 } Lock;
 
@@ -17,9 +18,8 @@ int shared = 0;
 int counter = 1;
 Lock* lock;
 
-
-#define LOCK(lock) \
-	((acqlck_(vm, (lock)) ? (0) : (zmEVENT(lock->ev))))
+#define myLOCK(lock, abrt) \
+	((acqlck_(vm, (lock)) ? (0) : (zmEVENT(lock->ev) | zmUNBIND(abrt))))
 
 
 int getID(zm_State *s)
@@ -47,6 +47,7 @@ int acquirecb(zm_VM *vm, int scope, zm_Event* event, zm_State *s, void **arg)
 
 	printf("\t task %d acquire lock (n=%d)\n", getID(s), lock->locked);
 
+	lock->owner = s;
 	lock->locked--;
 
 	return ZM_EVENT_ACCEPTED | ZM_EVENT_STOP;
@@ -65,6 +66,7 @@ int acqlck_(zm_VM *vm, Lock *lock)
 
 	printf("\t task %d acquire lock (first)\n", getID(s));
 
+	lock->owner = s;
 	lock->locked = 1;
 
 	return 1;
@@ -72,7 +74,28 @@ int acqlck_(zm_VM *vm, Lock *lock)
 
 void releaseLock(zm_VM *vm, Lock *lock)
 {
+	zm_State *s = zm_getCurrent(vm);
+
+	if (lock->locked <= 1)
+		return;
+
+
+	if (s != lock->owner) {
+		printf("releaseLock: cannot unlock\n");
+		printf("\t request by: task %d\n", getID(s));
+		printf("\t lock owner: task %d\n", getID(lock->owner));
+
+		exit(0);
+	}
+
 	zm_trigger(vm, lock->ev, NULL);
+}
+
+
+void unlock(zm_VM *vm, Lock *lock)
+{
+	printf("unlock all locked tasks:\n");
+	zm_unbindAll(vm, lock->ev, NULL);
 }
 
 
@@ -81,6 +104,7 @@ Lock *newLock(zm_VM *vm)
 	Lock* lock = malloc(sizeof(Lock));
 	lock->ev = zm_newEvent(lock);
 	zm_setEventCB(vm, lock->ev, acquirecb, ZM_TRIGGER);
+	lock->owner = NULL;
 	lock->locked = 0;
 	return lock;
 }
@@ -113,29 +137,40 @@ ZMTASKDEF( mycoroutine )
 {
 	TaskData *self = zmdata;
 
+	enum {INIT = ZM_INIT, ACQUIRE, PROCESS, RELEASE, ABORT};
+
 	ZMSTART
 
-	zmstate 1:
+	zmstate INIT:
 		self = malloc(sizeof(TaskData));
 		self->id = counter++;
 		zmData(self);
 		printf("* task %d: -init-\n", self->id);
-		zmyield 2;
+		zmyield ACQUIRE;
 
-	zmstate 2:
+	zmstate ACQUIRE:
 		printf("* task %d: lock...\n", self->id);
-		zmyield LOCK(lock) | 3;
+		zmyield myLOCK(lock, ABORT) | PROCESS;
 
-	zmstate 3:
+	zmstate PROCESS:
 		printf("* task %d: lock aquired\n", self->id);
 		open_resource();
-		zmyield 4;
+		zmyield RELEASE;
 
-	zmstate 4:
+	zmstate RELEASE:
 		printf("* task %d: release lock\n", self->id);
 		close_resource();
+
+		if (self->id == 5)
+			unlock(vm, lock);
+
 		releaseLock(vm, lock);
 		zmyield zmTERM;
+
+	zmstate ABORT:
+		printf("* task %d: lock aborted\n", self->id);
+		zmyield zmTERM;
+
 
 	zmstate ZM_TERM:
 		printf("* task %d: -end-\n", ((self) ? (self->id) : -1));
@@ -172,4 +207,5 @@ int main() {
 
 	return 0;
 }
+
 

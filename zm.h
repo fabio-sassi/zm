@@ -33,7 +33,7 @@
 #define __ZM_VM_H__
 
 
-#define ZM_VERSION "0.1.1"
+#define ZM_VERSION "0.1.2"
 
 #include <string.h>
 #include <stdio.h>
@@ -337,12 +337,12 @@ typedef struct zm_Event_ zm_Event;
 
 typedef struct zm_EventBinder_ zm_EventBinder;
 
-/* trigger event callback */
-typedef int (*zm_trigger_cb)(zm_VM *vm,
-                             int scope,
-                             zm_Event *event,
-                             zm_State *state,
-                             void **argument);
+/* event callback (trigger and unbind) */
+typedef int (*zm_event_cb)(zm_VM *vm,
+                           int scope,
+                           zm_Event *event,
+                           zm_State *state,
+                           void **argument);
 
 
 struct zm_Event_ {
@@ -351,7 +351,7 @@ struct zm_Event_ {
 	zm_EventBinder *bindlist;
 	size_t count;
 
-	zm_trigger_cb trigger;
+	zm_event_cb evcb;
 
 	void *data;
 };
@@ -703,7 +703,7 @@ typedef enum {
 #define zmNEXT(x) ZM_B3(x)
 #define zmCATCH(n) izmCATCH(vm, n)
 #define zmRESET(n) izmRESET(vm, n, __FILE__, __LINE__)
-
+#define zmUNBIND(x) ZM_B3(x)
 
 /* Inside operator API */
 #define zmyield return zmyieldtrace(vm, __FILE__, __LINE__) |
@@ -868,17 +868,25 @@ void* izmGetCallerData(zm_VM *vm);
 int zmIsError(zm_Exception *e);
 
 
+#define zmGetContinueHandler(e)                                                \
+	izmGetContinueHandler(vm, (e), __FILE__, __LINE__);
+
+zm_State *izmGetContinueHandler(zm_VM* vm, zm_Exception *e, const char *fn,
+                                                                int nline);
+
 
 /* event */
-zm_Event* zm_newEvent(zm_trigger_cb trigger, int triggerscope, void *data);
+zm_Event* zm_newEvent(void *data);
+
+void zm_setEventCB(zm_VM *vm, zm_Event* event, zm_event_cb cb, int scope);
 
 void zm_freeEvent(zm_VM *vm, zm_Event *event);
 
 size_t zm_trigger(zm_VM *vm, zm_Event *event, void *argument);
 
-size_t zm_unbindAll(zm_VM *vm, zm_Event *event, void *argument);
-
 size_t zm_unbind(zm_VM *vm, zm_Event *event, zm_State* s, void *argument);
+
+size_t zm_unbindAll(zm_VM *vm, zm_Event *event, void *argument);
 
 /* functions */
 zm_yield_t izm_resume(const char *fname, zm_VM* vm, zm_State *s, void *argument,

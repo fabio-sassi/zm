@@ -2384,6 +2384,19 @@ int zmIsError(zm_Exception *e)
 	return e->kind == ZM_EXCEPTION_ERROR;
 }
 
+zm_State *izmGetContinueHandler(zm_VM* vm, zm_Exception *e, const char *fn,
+                                                                 int nline)
+{
+	if (e->kind != ZM_EXCEPTION_CONTINUE) {
+		zm_fatalOn("zmGetContinueHandler", fn, nline);
+		zm_fatalDo(ZM_FATAL_UCODE, "CONH.NC", vm,
+		           "zmGetContinueHandler work only with continue "
+		           "exception (found %s)", zm_getExceptionKindName(e));
+	}
+
+	return e->beforecatch;
+}
+
 static int zm_haveException(zm_State *s, int kind)
 {
 	if (s->exception)
@@ -2917,7 +2930,7 @@ static zm_State *zm_serializeImplosion(zm_LockAndImplode *li,
 
 	/* when exception is passed to this function (error raising case)
 	   set the first implosion element as exception->beforecatch (if no
-	   zmRESET has been used this should be the state before catch) */
+	   one zmRESET has been used this should be the state before catch) */
 	if (exception)
 		exception->beforecatch = state;
 
@@ -3794,14 +3807,14 @@ static void zm_unbindEvent(zm_VM* vm, zm_State *s, void* argument, int scope)
 		           zm_getUnbindEventScope(unbindscope));
 	}
 
-	if ((unbindscope) && (evb->event->trigger))
-		evb->event->trigger(vm, unbindscope, evb->event, s, &argument);
+	if ((unbindscope) && (evb->event->evcb))
+		evb->event->evcb(vm, unbindscope, evb->event, s, &argument);
 
 
 	/* check if evb is the first element of the bindlist*/
 	if (evb->event->bindlist == evb) {
-		/* check if there is only one element*/
 		if (evb->event->bindlist->next == evb) {
+			/* only one element*/
 			evb->event->bindlist = NULL;
 		} else {
 			/* set header pointer of the list to second element */
@@ -3818,6 +3831,9 @@ static void zm_unbindEvent(zm_VM* vm, zm_State *s, void* argument, int scope)
 
 	evb->event->count--;
 	s->next = (zm_State*)evb->statenext;
+
+	if ((unbindscope) && (s->on.iter))
+		s->on.resume = s->on.iter;
 
 	ZM_D("zm_unbindEvent: resume");
 	/* #UNBIND_IMLOCK*/
@@ -3854,10 +3870,10 @@ static int zm_triggerEVB(zm_VM *vm, zm_EventBinder *evb, void *arg)
 	zm_State *s = evb->owner;
 	int r = ZM_EVENT_ACCEPTED;
 
-	if (zm_hasFlag(event, ZM_EVENT_TRIGGER) && (event->trigger)) {
+	if (zm_hasFlag(event, ZM_EVENT_TRIGGER) && (event->evcb)) {
 		ZM_D("zm_trigger: cb(state = [ref %lx])", s);
 
-		r = event->trigger(vm, ZM_EVENT_TRIGGER, event, s, &arg);
+		r = event->evcb(vm, ZM_EVENT_TRIGGER, event, s, &arg);
 
 		/* event trigger can return ZM_EVENT_ACCEPT or ZM_EVENT_REFUSE:
 		   if the event is accepted the relative task will be resumed
@@ -3878,10 +3894,10 @@ static int zm_triggerEVB(zm_VM *vm, zm_EventBinder *evb, void *arg)
 static int zm_trigger0(zm_VM *vm, zm_Event *event, void **arg)
 {
 	ZM_D("zm_trigger0:");
-	if (zm_hasFlag(event, ZM_EVENT_TRIGGER) && (event->trigger))
-		return event->trigger(vm, ZM_EVENT_TRIGGER, event, NULL, arg);
+	if (zm_hasFlag(event, ZM_EVENT_TRIGGER) && (event->evcb))
+		return event->evcb(vm, ZM_EVENT_TRIGGER, event, NULL, arg);
 	ZM_D("zm_trigger0: no callback event->flag = %d cb = %lx", event->flag,
-	     event->trigger);
+	     event->evcb);
 
 	return ZM_EVENT_ACCEPTED;
 }
@@ -4179,19 +4195,24 @@ int zm_freeState(zm_VM *vm, zm_State *state)
 	return zm_requestFreeState(vm, state, "zm_freeState");
 }
 
-zm_Event* zm_newEvent(zm_trigger_cb trigger, int triggerscope, void *data)
+zm_Event* zm_newEvent(void *data)
 {
 	zm_Event *event = zm_alloc(zm_Event);
 
-	/* TODO check consitency between trigger and triggerscope argument */
-
 	event->bindlist = NULL;
 	event->count = 0;
-	event->flag = triggerscope;
-	event->trigger = trigger;
+	event->flag = 0;
+	event->evcb = NULL;
 	event->data = data;
 
 	return event;
+}
+
+void zm_setEventCB(zm_VM *vm, zm_Event* event, zm_event_cb cb, int scope)
+{
+	/* TODO check consitency between cb and scope argument */
+	event->flag = scope;
+	event->evcb = cb;
 }
 
 size_t zm_unbindAll(zm_VM *vm, zm_Event *event, void *argument)
@@ -4216,9 +4237,6 @@ size_t zm_unbindAll(zm_VM *vm, zm_Event *event, void *argument)
 size_t zm_unbind(zm_VM *vm, zm_Event *event, zm_State* s, void *argument)
 {
 
-	if (!s)
-		return zm_unbindAll(vm, event, argument);
-
 	if (zm_hasntFlag(s, ZM_STATEFLAG_EVENTLOCKED))
 		return 0;
 
@@ -4236,8 +4254,8 @@ void zm_freeEvent(zm_VM *vm, zm_Event *event)
 	}
 
 
-	if (zm_hasFlag(event, ZM_EVENT_UNBIND) && (event->trigger))
-		event->trigger(vm, ZM_EVENT_UNBIND_REQUEST, event, NULL, NULL);
+	if (zm_hasFlag(event, ZM_EVENT_UNBIND) && (event->evcb))
+		event->evcb(vm, ZM_EVENT_UNBIND_REQUEST, event, NULL, NULL);
 
 
 	zm_free(zm_Event, event);
@@ -4611,7 +4629,7 @@ static void zm_checkParentYield(zm_VM *vm, zm_State *state, zm_Yield result,
 
 static void zm_processUnexpected(zm_VM *vm, zm_State *state, zm_Yield result)
 {
-	const char *sop = zm_getMachineOpName(state, false);
+	const char *op = zm_getMachineOpName(state, false);
 
 	switch(state->vmop) {
 
@@ -4621,20 +4639,20 @@ static void zm_processUnexpected(zm_VM *vm, zm_State *state, zm_Yield result)
 		           "unknow combination of machine result "
 		           "cmd = %s and vmop = %s",
 		           zm_getYieldCommandName(result.cmd),
-		           sop);
+		           op);
 		break;
 
 	case ZM_MACHINEOP_CLOSE_TASK:
 		if (zm_hasntFlag(state, ZM_STATEFLAG_IMPLOSIONLOCK)) {
 			zm_fatalDo(ZM_FATAL_UNP, "WCMOP.NFLI", vm,
 			           "not found lock and implode flag in "
-			           "state with vmop = %s", sop);
+			           "state with vmop = %s", op);
 		}
 
 		if (zm_isntTermState(state->on.resume)) {
 			zm_fatalDo(ZM_FATAL_UNP, "WCMOP.TR", vm,
 			           "not found term state in state with "
-			           "vmop = %s", sop);
+			           "vmop = %s", op);
 		}
 
 		zm_checkCloseYield(vm, state, result, "WCMOP.T", "WCMOP.D");
@@ -4644,7 +4662,7 @@ static void zm_processUnexpected(zm_VM *vm, zm_State *state, zm_Yield result)
 
 	case ZM_MACHINEOP_NO_MORE_TO_DO:
 		zm_fatalDo(ZM_FATAL_UNP, "WCMOP.NMTD", vm,
-		           "vmop = %s after dt", sop);
+		           "vmop = %s after dt", op);
 		break;
 
 
@@ -4766,6 +4784,9 @@ static int zm_processYield(zm_VM *vm, zm_Worker *worker, zm_State *state,
 		/* The continue-exception is stored only in catch-state */
 		catchstate->exception = e;
 
+		/* This reference is only for user zmGetContinueHandler */
+		e->beforecatch = lastbeforecatch;
+
 		/* remove exception from raise state */
 		state->exception = NULL;
 
@@ -4839,15 +4860,20 @@ static int zm_processYield(zm_VM *vm, zm_Worker *worker, zm_State *state,
 
 		return ZM_PROCESS_STATEUNLINKED;
 
+	case ZM_MACHINEOP_RUN | ZM_TASK_END:
+		zm_fatalOn(NULL, NULL, 0);
+		zm_fatalDo(ZM_FATAL_YIELD, "YEND.NVT", vm,
+			   "yield zmEND is permitted only in closing task "
+			   "inside ZM_TERM zmstate");
+		break;
 
 	case ZM_MACHINEOP_CLOSE_TASK | ZM_TASK_END:
 		/*  CHECK_OR_NOT	*/
 
 		if (zm_hasntFlag(state, ZM_STATEFLAG_IMPLOSIONLOCK)) {
-			zm_fatalOn(NULL, NULL, 0);
-			zm_fatalDo(ZM_FATAL_YIELD, "YEND.NVT", vm,
-			           "yield to zmEND is permitted "
-			           "only in ZM_TERM zmstate");
+			zm_fatalDo(ZM_FATAL_UNP, "YEND.NLI", vm,
+			           "task not in close mode with vmop="
+			           "ZM_MACHINEOP_CLOSE_TASK");
 		}
 
 		ZM_D("ZM_MACHINEOP_RUN | ZM_TASK_END");

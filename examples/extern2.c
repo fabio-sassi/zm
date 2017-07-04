@@ -1,9 +1,7 @@
-/*
-Fabio Sassi 100% Public Domain
-Extern task definition 2/2
-*/
 #include <stdio.h>
 #include <zm.h>
+
+/* Extern task definition 2/2 */
 
 ZMTASKDEF( mycoroutine )
 {

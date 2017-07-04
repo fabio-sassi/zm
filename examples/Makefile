@@ -5,14 +5,20 @@ DEP=../zm.h ../zm.c
 CC=gcc
 #CC=clang
 
-taskdef=simple.bin defstyles.bin extern.bin
-basic=helloworld.bin localvar.bin arg.bin
-subtask=itersub.bin hellosomeworlds.bin yieldto.bin argsub.bin
-errexcept=errcatch.bin extcatch.bin reset.bin 
-conexcept=unraise.bin
-event=waitinghelloworlds.bin trigcb.bin lock.bin
+all: taskdef basic subtask errexcept conexcept event
 
-all: $(taskdef) $(basic) $(subtask) $(errexcept) $(conexcept) $(event) 
+taskdef: simple.bin defstyles.bin extern.bin
+
+basic: helloworld.bin localvar.bin arg.bin
+
+subtask: itersub.bin hellosomeworlds.bin yieldto.bin argsub.bin
+
+errexcept: errcatch.bin extcatch.bin reset.bin
+
+conexcept: unraise.bin search.bin
+
+event: waitinghelloworlds.bin eventcb.bin lock.bin lock2.bin
+
 
 %.bin: %.c $(DEP) 
 	$(CC) $(FLAGS) $< -o $@

@@ -43,7 +43,7 @@ int main() {
 	int i;
 	zm_VM *vm = zm_newVM("test VM");
 
-	event = zm_newEvent(NULL, 0, NULL);
+	event = zm_newEvent(NULL);
 
 	for (i = 0; i < NTASKS; i++) {
 		zm_State *s = zm_newTasklet(vm, mycoroutine, NULL);

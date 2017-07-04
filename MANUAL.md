@@ -1,14 +1,13 @@
 
 
 # ZM:
-ZM use a finite state machines to handle *concurrency*. The library support
-three kind of *continuations*:
+ZM use a finite state machines to handle *concurrency*. It allow to create
+many independent concurrent task that can interact with other task or
+event. The library support three kind of *continuations*:
 
-- *ptask* (independend task)
+- *ptask* (independent task)
 - *subtask* (dependent task)
 - exception
-
-Tasks can also interact with virtual events.
 
 ## The Core:
 The idea behind ZM is to split code of a task with a `switch` 
@@ -146,7 +145,7 @@ Task manager cycle through active tasks and process them step by step.
 A step (also called **machine step**) is the piece of code between the
 current `zmstate` and the first yield or raise operator.
 The main purpose of task manager in ZM is to map the current
-and successive states (`zmstate`) of a task and excute them, for
+and successive states (`zmstate`) of a task and execute them, for
 this reason is also called virtual mapper:
 
 	zm_VM *vm = zm_newVM("test VM");
@@ -292,7 +291,7 @@ can resume:
 
 ### Suspend a task:
 Yield to suspend for ptasks implies only a suspend while for a subtasks 
-mean also the automaticaly resume of the task that are waiting for it.
+mean also the automatically resume of the task that are waiting for it.
 
 	yield zmSUSPEND | 5;
 
@@ -351,7 +350,7 @@ Each task (ptask or subtask) have this structure:
 		ZMEND
 	}
 
-ZMTASKDEF(x) is a macro that create a pointer to a `zm_Machine` named 
+`ZMTASKDEF(x)` is a macro that create a pointer to a `zm_Machine` named 
   `x` that define the task class `x`.
 `ZMSTART` is equivalent to a `switch`, `zmstate` to `case` and 
 `ZMEND` to the `default`. 
@@ -448,7 +447,7 @@ or with the `zmData` macro:
 		zmData(userlocaldata);
 
 As explained before `zmdata` is a copy of a pointer so modify the
-`task->data` (for example with `zmData`) during the task excution
+`task->data` (for example with `zmData`) during the task execution
 don't modify the `zmdata` until next machine step.
 
 A second example show how to use `zmData`:
@@ -483,14 +482,14 @@ A second example show how to use `zmData`:
 		zm_go(vm , 5);
 	}
 
-### Task Resume Argument:
+### The Resume Argument:
 
-The local variables system above is a way to store data but can 
+The local variables system above is a way to store data and can 
 also be used to exchange messages.
 Anyway there is a more flexible feature to exchange variable between tasks:
-the *resume argument*. The resume argument allow to set a `void *` pointer
-that will be accessible in resumed task as **zmarg** in the first
-machine step.
+the *resume argument*. The resume argument allow pass a `void` pointer to a 
+resume function/operator that will be accessible in resumed task as **zmarg**.
+This pointer will be avaible only after a resume in the first machine step.
 
 	ZMTASKDEF( Foo )
 	{
@@ -533,25 +532,31 @@ output:
 	foo: 2
 	zmarg = <none>
 
-Each resume functions or operators allow to set this argument (`arg`):
+#### As a parameter:
 
-	- `zm_resume(vm, task, arg)`
-	- `zmSUB(task, arg)`
-	- `zmSSUB(task, arg)`
-	- `zmUNRAISE(task, arg)`
-	- `zmTO(task, arg)`
-	- `zmLAST(task, arg)`
-	- `zm_trigger(vm, event, arg)`
+Each resume functions or operators allow to set this argument.
+In these functions the resume argument act like a function parameter:
 
-Moreover this can be set in a task defintion before any suspend operation with
-`zmResponse(arg)`
+	- `zm_resume(vm, task, resumearg)`
+	- `zmSUB(task, resumearg)`
+	- `zmSSUB(task, resumearg)`
+	- `zmUNRAISE(task, resumearg)`
+	- `zmTO(task, resumearg)`
+	- `zmLAST(task, resumearg)`
+	- `zm_trigger(vm, event, resumearg)`
+
+#### As a return:
+
+Resume argument can also be used as "return value". A subtask can set it
+before suspend or term:
+
+	zmResponse(resumearg)
 
 
-
-### Other syntax:
+### Task class syntaxes:
 
 There are some equivalent syntax in task class definition for example `zmyield` 
-can be repleaced with `yield` (defining `ZM_FAST_SYNTAX`) and `ZMSTATES` 
+can be replaced with `yield` (defining `ZM_FAST_SYNTAX`) and `ZMSTATES` 
 can be used in place of `ZMSTART`. 
 Moreover `ZMTASKDEF` and `ZMEND` implicit use curly braces `{}` making
 possible to don't use. All this features allow to define 
@@ -591,7 +596,7 @@ be used in every context have it.
 
 ### Task-class context:
 
-1. **ZMABC**: task class definintion operators
+1. **ZMABC**: task class definition operators
    - `ZMTASKDEF`
    - `ZMSTART`
    - `ZMEND`
@@ -715,8 +720,7 @@ The only permitted yield in `ZM_TERM` is:
 
 	yield zmEND;
 
-This yield is permitted also in *normal-mode* and allow to bypass 
-`ZM_TERM`.
+`zmEND` can be used only in closing-mode.
 
 
 ### Yield to task example:
@@ -847,7 +851,7 @@ with `zmCatch` in the exception-zmstate (equals to "catch"):
 
 - Exceptions can be raised only inside a subtask and can be catch 
   in other subtasks or in the root-ptask.
-- An error-exception without a catch, cause `zm_go` to return immediatly
+- An error-exception without a catch, cause `zm_go` stop and return
   `ZM_RUN_EXCEPTION`. The relative exception *must* be catch
   with `zm_ucatch`.
 - A continue-exception without a catch will cause a fatal.
@@ -961,7 +965,43 @@ To define a resent point in the raise itself use instead:
 
 zmRESET cannot be applied to a ptask.
 
+
+#### Uncaught Error Exception:
+An error exception without a catch will be caught by `zm_go` (or `zm_mGo`).
+This function suddenly return a `ZM_RUN_EXCEPTION`. 
+
+This particular exception is outside task definition and must be catch
+and free with special functions. 
+
+To catch an uncaught exception use:
+
+	zm_Exception *zm_ucatch(zm_VM *vm)
+
+instead to free an uncaught exception:
+
+	void zm_freeUncaughtError(zm_VM *vm, zm_Exception *e);
+
+
+**Note:** A second uncaught exception (before the first one is catch and 
+free) cause a fatal error. 
+
+##### Example:
+
+	int status;
+	do {
+		status = zm_go(vm, 100)
+
+		if (status == ZM_RUN_EXCEPTION) {
+			zm_Exception *e = zm_ucatch(vm);
+			zm_printError(NULL, e, true);
+			zm_freeUncaughtError(vm, e);	
+		}
+
+	} while(status)
+
+
 #### Continue Exception:
+
 Continue exception have a very different behaviour from error exception. 
 
 *A continue exception is a kind of (big) suspend-resume block.*
@@ -1081,7 +1121,7 @@ output:
 
 
 ## EVENT:
-A task can be suspended waiting a virtual event. This is done with:
+A task can be suspended waiting a virtual event:
 
 	zmyield zmEVENT(e) | 5;
 
@@ -1092,63 +1132,399 @@ or an unbind resume them.
 ### Create an Event:
 To create an event:
 
-	zm_Event *event = zm_newEvent(trigcb, flags, data);
+	zm_Event *event = zm_newEvent(data);
 
-Where:
+`data` is `void *` pointer that can be accessible from `event->data`
 
-- trigcb can be NULL or a callback function with this arguments:
-  `int trigcb(zm_VM *vm, int scope, zm_Event* event, zm_State *s, void **arg)`
 
-- flags are a combination of:
-	- `ZM_TRIGGER`: trigcb will be used for trigger operation 
-	- `ZM_UNBIND_REQUEST`: trigcb will be used for unbind operation due to
-	  the functions: `zm_unbind` or `zm_unbindAll`.
-	- `ZM_UNBIND_ABORT`: trigcb will be used for event unbind in close
-	  operation.
+### Bind an event to a task:
 
-	A shortcut for all unbind operation (except the unbind relative to a
-	trigger) is `ZM_UNBIND` that is equivalent to 
-	`ZM_UNBIND_REQUEST | ZM_UNBIND_ABORT`.
+	zmyield zmEVENT(event) | EVTRIG | zmUNBIND(EVUNBIND);
 
-- `data` is `void *` pointer that can be accesible from `event->data`
+When the task receive the event it will be resumed in `EVTRIG` zmstate.
+If an unbind is performed before trigger, task will be resume in the
+zmstate defined by `zmUNBIND()`.
+
+If the unbind resume point is not defined the trigger resume point is used
+also for unbind operation:
+
+	zmyield zmEVENT(event) | EVTRIG;
 
 ### Trigger an event:
 
 	size_t zm_trigger(zm_VM *vm, zm_Event *event, void *arg);
 
-If the trigger callback is NULL or the event hasn't `ZM_TRIGGER` flag 
-each task binded to this event will be resumed (with resume argument `arg`). 
+This command trigger the event `event`. A trigger resume 
+all tasks binded to the event with `arg` as resume argument.
 
-On the other side an event with a trigger callback and the `ZM_TRIGGER` flag
-will use this callback for two purpose:
+The command return the number of resumed task.
+
+### Unbind a task:
+
+	size_t zm_unbind(zm_VM *vm, zm_Event *e, zm_State* s, void *arg);
+
+Unbind the task `s` with resume argument `arg`. 
+
+Return:
+	
+- 0 if `s` is not binded to `e`
+- 1 if `s` is is binded to `e` 
+
+### Unbind all tasks:
+	
+	size_t zm_unbindAll(zm_VM *vm, zm_Event *e, void *arg);
+
+Unbind all task binded to event `e` with resume argument `arg`.
+
+### The event callback:
+
+The event callback allow to filter trigger event and to accomplish 
+syncronous operation. An event callback can be set with: 
+
+	void zm_setEventCB(zm_VM *vm, zm_Event* e, zm_event_cb cb, int scope);
+
+The scope-flag allow to define the contexts where the callback will be 
+activated:
+
+- `ZM_TRIGGER` callback will be used (also) for trigger operation.
+- `ZM_UNBIND_REQUEST` callback will be used (also) for unbind request:
+   (`zm_unbind`, `zm_unbindAll`).
+- `ZM_UNBIND_ABORT` callback will be used (also) for event unbind in close
+   operations. 
+
+A shortcut for all unbind operation is `ZM_UNBIND` equivalent to 
+`ZM_UNBIND_REQUEST | ZM_UNBIND_ABORT`.
+
+
+The event callback is a function with this format:
+
+	int (*zm_event_cb)(zm_VM *vm, int scope, zm_Event *e, zm_State *state,
+	                                                           void **arg)
+
+Where:
+
+- `state` is the binded state 
+- `scope` is the scope where the callback has just been invoked (it 
+  can assume only one of the scope flag value).
+- `arg` is:
+	- a pointer to the resume argument of `zm_trigger`
+	  in `ZM_TRIGGER` scope.
+	- a pointer to the resume argument of unbind command 
+	  in `ZM_UNBIND_REQUEST` scope.
+	- null in `ZM_UNBIND_ABORT` scope.
+
+
+This callback can manage only task data, event data and argument.
+Use a ZM function inside the callback can produce impredicable 
+behaviour.
+
+
+#### The trigger callback:
+
+The trigger callback (event callback with the scope flag `ZM_TRIGGER`) have 
+two purpose:
 
 - filter task that can receive this event
 - accomplish syncronous operation
 
-So the trigger callback can control what tasks can be resumed and can
-modify the resume argument.
+A call to `zm_trigger` produce from one callback call to many.
 
-In both situations `zm_trigger` return the number of resumed task.
+The first call is a generic call called **pre-fetch mode**. If the pre-fetch
+accept the event the callback will be invoked for each task binded to 
+the event: **fetch mode**.
 
-### Unbind an event:
+In pre-fetch mode the binded task argument is null:
 
-	size_t zm_unbindAll(zm_VM *vm, zm_Event *e, void *argument);
+	int evcb(zm_VM *vm, int scope, zm_Event *e, zm_State *s,void **arg)
+	{
+		if (scope == ZM_TRIGGER) { 
+			if ((s == NULL)) {
+				/* pre-fetch mode */		
+			} else {
+				/* fetch mode */
+			}
+		}
+	}
 
-	size_t zm_unbind(zm_VM *vm, zm_Event *e, zm_State* s, void *argument);
+In pre-fetch mode the callback function can return only two value:
 
-Unbind, like trigger, can invoke the trigcb callback if this is not NULL 
-and the event has the `ZM_UNBIND_REQUEST` flag.
+- `ZM_EVENT_ACCEPTED`: accept this event and go in fetch mode.
+- `ZM_EVENT_REFUSED`: refuse this event.
 
-The callback for the unbind operations (also `ZM_UNBIND_ABORT`) is invoked
-only to perform syncronous operation and cannot filter anything.
 
-### The callback:
+Also in fetch mode the callback function must return one of this two value
+but can also add `ZM_EVENT_STOP` modifier to stop to fetch any other binded
+task.
+
+	int randcb(zm_VM *vm, int scope, zm_Event *e, zm_State *s,void **arg)
+	{
+		if (scope != ZM_TRIGGER) 
+			return 0;
+
+
+		if ((s == NULL)) {
+			/* pre-fetch mode */
+			if (rand() % 2)
+				return ZM_EVENT_ACCEPTED;
+			else
+				return ZM_EVENT_REFUSED;
+		}
+
+		/* fetch mode */
+		switch(rand() % 4) {
+			case 0:
+				return ZM_EVENT_ACCEPTED;
+			case 1:
+				return ZM_EVENT_REFUSED;
+			case 2:
+				return ZM_EVENT_ACCEPTED | ZM_EVENT_STOP;
+			case 3:
+				return ZM_EVENT_REFUSED | ZM_EVENT_STOP;
+		}
+	}
+
+
+The resume argument pointer can be replaced with another pointer or nullified.
+In fetch mode this modify affect only the resume of the current binded task
+while in pre-fetch affect all the successive fetch requests.
+
+#### The unbind callback:
+
+An unbind callback is an event callback with the scope flag `ZM_UNBIND_REQUEST` 
+and/or `ZM_UNBIND_ABORT`.
+
+The unbind callback is used only to perform syncronous operation, it have
+not filtering purpose (as trigger callback). For this reason the return 
+value have no meaning.
+
+
+Unbind callback is relative to these scopes:
+
+- `ZM_UNBIND_REQUEST` is used to manage explicit unbind request
+  (`zm_unbind`, `zm_unbindAll` and `zm_freeEvent`)
+- `ZM_UNBIND_ABORT` is used during close operations
+
+The unbind callback is invoked for each binded task and return the number
+of unbinded task.
+
+`zm_freeEvent` perform a last `ZM_UNBIND_REQUEST` with a null binded task.
+This is a **post fetch** or **pre free** operation before free the event.
+
+	int evcb(zm_VM *vm, int scope, zm_Event *e, zm_State *s,void **arg)
+	{
+		if (scope == ZM_UNBIND_REQUEST) { 
+			if ((s == NULL)) {
+				/* post-fetch (or pre-free) mode */		
+			} else {
+				/* fetch mode */
+			}
+		}
+	}
+
+
+#### Event callback example:
+	typedef struct {
+		int id;
+	} TaskData;
+
+	int counter = 1;
+
+	zm_Event * event;
+
+	int getID(zm_State *s)
+	{
+		return ((TaskData*)(s->data))->id;
+	}
+
+	int eventcb(zm_VM *vm, int scope, zm_Event* e, zm_State *s, void **arg)
+	{
+		const char *msg = ((arg) ? ((const char*)(*arg)) : ("null"));
+		msg = (msg) ? (msg) : "";
+		printf("\tcallback: arg = `%s` scope = ", msg);
+
+		if (scope & ZM_UNBIND_REQUEST)
+			printf("UNBIND_REQUEST ");
+
+		if (scope & ZM_UNBIND_ABORT)
+			printf("UNBIND_ABORT ");
+
+		if (scope & ZM_TRIGGER)
+			printf("TRIGGER ");
+
+		printf("\n");
+
+		if (!s) {
+			/* a modify of arg in pre-fetch affect all fetches */
+			if (scope & ZM_TRIGGER)
+				*arg = "two";
+
+			if (scope & ZM_TRIGGER)
+				printf("\t\t-> pre-fetch\n");
+			else
+				printf("\t\t-> pre-free\n");
+
+			return ZM_EVENT_ACCEPTED;
+		}
+
+		printf("\t\t-> fetch task %d ", getID(s));
+
+
+		if (getID(s) == 1) {
+			/* a modify of arg in fetch affect only current fetch */
+			*arg = "three";
+			if (scope & ZM_TRIGGER)
+				printf("(accepted)\n");
+			return ZM_EVENT_ACCEPTED;
+		}
+
+		if (scope & ZM_TRIGGER)
+			printf("(accepted but stop other fetches)");
+
+		printf("\n");
+		return ZM_EVENT_ACCEPTED | ZM_EVENT_STOP;
+	}
+
+
+
+
+	ZMTASKDEF( mycoroutine )
+	{
+		TaskData *self = zmdata;
+
+		ZMSTART
+
+		zmstate 1:
+			self = malloc(sizeof(TaskData));
+			self->id = counter++;
+			zmData(self);
+			printf("task %d: -init-\n", self->id);
+			zmyield zmEVENT(event) | 2 | zmUNBIND(3);
+
+		zmstate 2:
+			printf("task %d: msg = `%s`\n", self->id, 
+			       (const char*)zmarg);
+			zmyield zmTERM;
+
+		zmstate 3:
+			printf("task %d: event aborted - ", self->id);
+			printf("msg = `%s`\n", (const char*)zmarg);
+			zmyield zmTERM;
+
+		zmstate ZM_TERM:
+			printf("task %d: -end-\n", ((self) ? (self->id) : -1));
+			if (self)
+				free(self);
+
+		ZMEND
+	}
+
+
+	int main() {
+		zm_VM *vm = zm_newVM("test VM");
+		zm_State *s1, *s2, *s3, *s4, *s5;
+
+		event = zm_newEvent(NULL);
+		zm_setEventCB(vm, event, eventcb, ZM_TRIGGER | ZM_UNBIND);
+
+		s1 = zm_newTasklet(vm, mycoroutine, NULL);
+		s2 = zm_newTasklet(vm, mycoroutine, NULL);
+		s3 = zm_newTasklet(vm, mycoroutine, NULL);
+		s4 = zm_newTasklet(vm, mycoroutine, NULL);
+		s5 = zm_newTasklet(vm, mycoroutine, NULL);
+		zm_resume(vm, s1, NULL);
+		zm_resume(vm, s2, NULL);
+		zm_resume(vm, s3, NULL);
+		zm_resume(vm, s4, NULL);
+		zm_resume(vm, s5, NULL);
+
+		while(zm_go(vm, 1));
+
+		printf("\n* trigger event:\n");
+		zm_trigger(vm, event, "one");
+		printf("\n* unbind s4:\n");
+		zm_unbind(vm, event, s4, "I don't wait anymore");
+
+		printf("\n\n");
+		while(zm_go(vm, 1));
+
+		printf("\n* close all tasks:\n\n");
+		zm_closeVM(vm);
+		zm_go(vm, 1000);
+		zm_freeVM(vm);
+
+		printf("\n* free event:\n\n");
+		zm_freeEvent(vm, event);
+
+		return 0;
+	}
+
+output:
+
+	task 1: -init-
+	task 2: -init-
+	task 3: -init-
+	task 4: -init-
+	task 5: -init-
+
+	* trigger event:
+		callback: arg = `one` scope = TRIGGER 
+			-> pre-fetch
+		callback: arg = `two` scope = TRIGGER 
+			-> fetch task 1 (accepted)
+		callback: arg = `two` scope = TRIGGER 
+			-> fetch task 2 (accepted but stop other fetches)
+
+	* unbind s4:
+		callback: arg = `I don't wait anymore` scope = UNBIND_REQUEST 
+			-> fetch task 4 
+
+
+	task 1: msg = `three`
+	task 2: msg = `two`
+	task 4: event aborted - msg = `I don't wait anymore`
+	task 1: -end-
+	task 2: -end-
+	task 4: -end-
+
+	* close all tasks:
+
+		callback: arg = `` scope = UNBIND_ABORT 
+			-> fetch task 5 
+		callback: arg = `` scope = UNBIND_ABORT 
+			-> fetch task 3 
+	task 5: -end-
+	task 3: -end-
+
+	* free event:
+
+		callback: arg = `null` scope = UNBIND_REQUEST 
+			-> pre-free
+
+	
 
 
 ## Run:
 
-The main command to run a task is `zm_go`
+There main command to run tasks is: 
+
+	zm_mGo(zm_VM *vm, zm_Machine* machine, unsigned int nsteps)
+
+where:
+
+- `machine`: is a specific task class to be executed (if null all task classes
+  will be used).
+- nsteps: the number of machine step to perform.
+
+`zm_go` is equivalent to `zm_mGo` with a null `machine` pointer.
+
+	zm_go(vm, 100);
+	/* equals to */
+	zm_mGo(vm, NULL, 100);
 
 
+These command return a combination of:
 
+- `ZM_RUN_IDLE = 0` nothing to do.
+- `ZM_RUN_AGAIN` there are still active tasks.
+- `ZM_RUN_EXCEPTION` uncaught error exception.
 
