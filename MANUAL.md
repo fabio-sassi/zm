@@ -97,7 +97,8 @@ The C preprocessor convert this code in something like:
 
 `foo` is a task class that allow to instance tasks (`zm_State`).
 
-`zmstate` define an integer for labeling a blocks of (atomic) execution.
+`zmstate` define an integer between 1 and 250 for labeling a blocks of 
+(atomic) execution.
 
 A `foo` instance return a 4 bytes integer: one byte represent a 
 command for the task manager while others bytes are arguments for 
@@ -140,10 +141,11 @@ This allow to use them simultaneously, using *OR* operator, in a single yield:
 The involved endianess issue is worked around with endianess-independent  
 procedure.
 
-### zmstate and the task manager:
+### The task manager:
 Task manager cycle through active tasks and process them step by step.
 A step (also called **machine step**) is the piece of code between the
 current `zmstate` and the first yield or raise operator.
+
 The main purpose of task manager in ZM is to map the current
 and successive states (`zmstate`) of a task and execute them, for
 this reason is also called virtual mapper:
@@ -358,16 +360,34 @@ Each task (ptask or subtask) have this structure:
 The `[global definition]` is the place where is possibile to define 
 variable or write piece of code that will executed before any zmstate.
 
-### The init zmstate:
-The zmstate 1 is the resume point for every new instanced task: it must
-always be present.
+### Task states - zmstate:
+zmtates define the atomic execution blocks in a task.
 
-This zmstate can be used as a constructor to allocate the resource for
-the task. 
+	zmstate 100:
+		/* atomic execution block - begin */
+
+		...
+
+		zmyield ...
+		/* atomic execution block - end */
+
+
+`zmstate` is followed by a positive integer between 1 and 250 (value 
+over 250 are reserved).
+
+#### The first zmstate:
+The zmstate 1 is the default resume point for every new instanced task: 
+it must always be present.
+
+This zmstate can be used as a constructor.
 
 The library have a constant that can be used in place of 
 the numerical value: `ZM_INIT`.
 
+#### The last zmstate:
+
+Every task that receive a close command will be resume in a special
+zmstate used for deallocate resources: `ZM_TERM`.
 
 ### Local variables:
 
@@ -1201,11 +1221,11 @@ syncronous operation. An event callback can be set with:
 The scope-flag allow to define the contexts where the callback will be 
 activated:
 
-- `ZM_TRIGGER` callback will be used (also) for trigger operation.
-- `ZM_UNBIND_REQUEST` callback will be used (also) for unbind request:
+- `ZM_TRIGGER` callback will be invoked in trigger operation.
+- `ZM_UNBIND_REQUEST` callback will be invoked in unbind request:
    (`zm_unbind`, `zm_unbindAll`).
-- `ZM_UNBIND_ABORT` callback will be used (also) for event unbind in close
-   operations. 
+- `ZM_UNBIND_ABORT` callback will be invoked in the automatic unbind 
+   during close operations (`zm_abort`). 
 
 A shortcut for all unbind operation is `ZM_UNBIND` equivalent to 
 `ZM_UNBIND_REQUEST | ZM_UNBIND_ABORT`.
@@ -1218,7 +1238,7 @@ The event callback is a function with this format:
 
 Where:
 
-- `state` is the binded state 
+- `state` is the binded state.
 - `scope` is the scope where the callback has just been invoked (it 
   can assume only one of the scope flag value).
 - `arg` is:
@@ -1226,9 +1246,14 @@ Where:
 	- the resume argument of unbind command in `ZM_UNBIND_REQUEST` scope
 	- null in `ZM_UNBIND_ABORT` scope
 
+The return value depend by the `scope` and the `state` values. 
 
-**WARNING:** Use a ZM function inside the callback can produce impredicable 
-behaviour.
+**WARNING:** 
+Use a ZM function inside the callback can produce impredicable behaviour.
+The only purpose of `zm_Event* e` and `zm_State *state` arguments is to 
+work on event data `e->data` and state data `state->data`.
+For example never use `zm_resume`, `zm_trigger`, `zm_unbind`, `zm_abort`
+inside the callback.
 
 
 #### The trigger callback:
@@ -1239,59 +1264,54 @@ two purpose:
 - filter task that can receive this event
 - accomplish syncronous operation
 
-A call to `zm_trigger` produce from one callback call to many.
+`zm_trigger` first invoke the trigger callback in **pre-fetch mode** with
+the argument relative to the the task equals to NULL. This 
+is a generic filter that can accept or refuse the whole event.
 
-The first call is a generic call called **pre-fetch mode**. If the pre-fetch
-accept the event the callback will be invoked for each task binded to 
-the event: **fetch mode**.
-
-In pre-fetch mode the binded task argument is null:
-
-	int evcb(zm_VM *vm, int scope, zm_Event *e, zm_State *s,void **arg)
-	{
-		if (scope == ZM_TRIGGER) { 
-			if ((s == NULL)) {
-				/* pre-fetch mode */		
-			} else {
-				/* fetch mode */
-			}
-		}
-	}
-
-In pre-fetch mode the callback function can return only two value:
-
-- `ZM_EVENT_ACCEPTED`: accept this event and go in fetch mode.
-- `ZM_EVENT_REFUSED`: refuse this event.
+If the event is accepted trigger go in **fetch mode** and  
+invoked again the callback for each task binded to the event.
 
 
-Also in fetch mode the callback function must return one of this two value
-but can also add `ZM_EVENT_STOP` modifier to stop to fetch any other binded
-task.
+Callback return values in *pre-fetch mode*:
+
+- `ZM_EVENT_ACCEPTED`: accept the event and go in fetch mode.
+- `ZM_EVENT_REFUSED`: refuse the event.
+
+
+Callback return values in *fetch mode*:
+
+- `ZM_EVENT_ACCEPTED`: accept the event for the current task that will be 
+   resumed and unbinded to the event (this is a trasparent internal unbind 
+   operation that have nothing to do with the `ZM_UNBIND` callback scope).
+- `ZM_EVENT_REFUSED`: refuse the event for the current task that continue to
+   be binded to the event.
+- `ZM_EVENT_STOP`: modifier to stop any other fetch. 
+	- `ZM_EVENT_ACCEPTED | ZM_EVENT_STOP`
+	- `ZM_EVENT_REFUSED | ZM_EVENT_STOP`
+
+
+Example:
 
 	int randcb(zm_VM *vm, int scope, zm_Event *e, zm_State *s, void **arg)
 	{
 		if (scope != ZM_TRIGGER) 
 			return 0;
 
-
-		if ((s == NULL)) {
+		if (s == NULL) {
 			/* pre-fetch mode */
 			if (rand() % 2)
 				return ZM_EVENT_ACCEPTED;
 			else
 				return ZM_EVENT_REFUSED;
-		}
+		} else {
+			/* fetch mode */
+			int r;
+			r = (rand() % 2) ? ZM_EVENT_ACCEPTED : ZM_EVENT_REFUSED;
 
-		/* fetch mode */
-		switch(rand() % 4) {
-			case 0:
-				return ZM_EVENT_ACCEPTED;
-			case 1:
-				return ZM_EVENT_REFUSED;
-			case 2:
-				return ZM_EVENT_ACCEPTED | ZM_EVENT_STOP;
-			case 3:
-				return ZM_EVENT_REFUSED | ZM_EVENT_STOP;
+			if (rand() % 2)
+				r = r | ZM_EVENT_STOP; 
+
+			return r;
 		}
 	}
 
@@ -1509,17 +1529,18 @@ output:
 
 
 
-## Run:
+## Run tasks:
 
-There main command to run tasks is: 
+The main "play" command to run tasks is: 
 
 	zm_mGo(zm_VM *vm, zm_Machine* machine, unsigned int nsteps)
 
 where:
 
-- `machine`: is a specific task class to be executed (if null all task classes
-  will be used).
-- nsteps: the number of machine step to perform.
+- `machine`: can be a specific task class to be executed or `NULL` to execute
+  any active task.
+- `nsteps`: the number of machine step to perform (zero means: do nothing and
+  return `ZM_RUN_AGAIN`).
 
 `zm_go` is equivalent to `zm_mGo` with a null `machine` pointer.
 

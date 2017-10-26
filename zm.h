@@ -334,7 +334,6 @@ struct zm_StateQueue_ {
 /* * Events * */
 
 typedef struct zm_Event_ zm_Event;
-
 typedef struct zm_EventBinder_ zm_EventBinder;
 
 /* event callback (trigger and unbind) */
@@ -426,15 +425,11 @@ struct zm_Exception_ {
  * In this way user can use global machine symbol as the reference to
  * the relative zm_Worker instance (for example to instance new task).
 */
-
-typedef struct zm_Machine_ zm_Machine;
-
-struct zm_Machine_ {
+typedef struct {
 	int id;
 	zm_yield_t (*fun)(zm_VM* zm, uint8_t zmop, void* zmdata, void *zmarg);
 	const char* name;
-	int count;
-};
+} zm_Machine;
 
 /* * Worker * */
 
@@ -568,6 +563,7 @@ typedef enum {
 } zm_kfatal_t;
 
 
+typedef void (*zm_tlock_cb)(void *data, int lock);
 
 #define zm_enableFlag(s, FLAG)   (s)->flag |= FLAG
 #define zm_disableFlag(s, FLAG)   (s)->flag &= (0xFF ^ FLAG)
@@ -621,7 +617,16 @@ typedef enum {
 #define zmResponse(r)                                                         \
         izmResponse(vm, (r), __FILE__, __LINE__)
 
+/* oppure lo chiamo zmLet TODO FIXME ??? */
+/* oppure lo chiamo zmLet TODO FIXME ??? */
+/* oppure lo chiamo zmLet TODO FIXME ??? cmq ho aggiunto zmSetData perchè
+   solo lo shortcut non mi convincenva e fose come shortcut dovremmo cambiarlo
+   in zmLet */
+
 #define zmData(d)                                                             \
+        izmSetData(vm, d)
+
+#define zmSetData(d)                                                          \
         izmSetData(vm, d)
 
 #define zmCatch()                                                             \
@@ -715,7 +720,7 @@ typedef enum {
 #define ZMTASKDEF(x)                                                          \
     zm_yield_t x ## __function__(zm_VM*, uint8_t zmop, void* zmdata,          \
                                                        void* zmarg);          \
-    zm_Machine x ## __byval__ = {-1, x ## __function__, #x, 0};               \
+    zm_Machine x ## __byval__ = {-1, x ## __function__, #x};                  \
     zm_Machine* x = &x ## __byval__;                                          \
     zm_yield_t (x ## __function__)(zm_VM* vm, uint8_t zmop, void* zmdata,     \
                                                              void *zmarg)     \
@@ -724,7 +729,7 @@ typedef enum {
 
 #define ZMTASKLN(base, x)                                                     \
     zm_yield_t base ## __function__(zm_VM*, uint8_t, void*, void*);           \
-    zm_Machine x ## __byval__ = {-1, base ## __function__, #x, 0};            \
+    zm_Machine x ## __byval__ = {-1, base ## __function__, #x};               \
     zm_Machine* x = &x ## __byval__                                           \
 
 
@@ -775,10 +780,10 @@ typedef enum {
 
 /* memory utilty */
 #define zm_alloc(s) ((s*)zm_malloc(sizeof(s), true))
-#define zm_nalloc(s, n) ((s*)zm_malloc(sizeof(s) * (n), true))
 #define zm_free(s, ptr) zm_mfree(sizeof(s), ptr)
+#define zm_nalloc(s, n) ((s*)zm_malloc(sizeof(s) * (n), true))
+#define zm_nrealloc(ptr, s, n) ((s*)zm_mrealloc((ptr), sizeof(s) * (n), true))
 #define zm_nfree(s, n, ptr) zm_mfree(sizeof(s) * (n), ptr)
-#define zm_realloc(ptr, s, n) ((s*)zm_mrealloc((ptr), sizeof(s) * (n), true))
 
 void *zm_malloc(size_t size, int memfatal);
 void *zm_mrealloc(void *ptr, size_t size, int memfatal);
@@ -797,12 +802,12 @@ void zm_removePrintBuffer(zm_Print *out);
 /* report fatal-error utility */
 typedef void (*zm_fatal_cb)(zm_VM *vm, char *msg, void *data);
 
-void zm_atFatal(zm_fatal_cb cb, void *data);
-void zm_fatalUndefState(zm_VM *vm, const char *fn, int nl);
+void zm_fatalInit();
+void zm_fatalOn(const char *refname, const char *fn, int nl);
 void zm_fatalDo(zm_kfatal_t kind, const char *ecode, zm_VM *vm,
                                           const char *fmt, ...);
-void zm_fatalOn(const char *refname, const char *fn, int nl);
-
+void zm_fatalUndefState(zm_VM *vm, const char *fn, int nl);
+void zm_atFatal(zm_fatal_cb cb, void *data);
 
 /* generic queue state */
 zm_StateQueue* zm_queueNew();
@@ -921,6 +926,8 @@ int zm_closeVM(zm_VM* vm);
 void zm_freeVM(zm_VM* vm);
 void zm_setProcessStateCallback(zm_VM *vm, zm_process_cb p);
 
+/* multi thread support */
+void zm_setThreadLock(zm_tlock_cb cb, void* data);
 
 /* process */
 int zm_go(zm_VM* vm, unsigned int ncycle);
