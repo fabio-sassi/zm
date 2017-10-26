@@ -64,7 +64,7 @@ int main() {
 	zm_resume(vm, t, NULL);
 	while(zm_go(vm, 1)) {}
 
-	printf("#main: now there is no more to do\n");
+	printf("#main: now there are no more to do\n");
 	zm_freeTask(vm, t);
 	zm_closeVM(vm);
 	zm_go(vm, 100);

@@ -855,7 +855,6 @@ static const char *zm_getYieldCommandName(int n)
 	ZM_STRCASE(ZM_TASK_BUSY_WAITING_EVENT);
 	ZM_STRCASE(ZM_TASK_RAISE_CONTINUE_EXCEPTION);
 	ZM_STRCASE(ZM_TASK_RAISE_ERROR_EXCEPTION);
-	ZM_STRCASE(ZM_TASK_VMSTOP);
 	}
 	return "unknow yield command";
 }
@@ -4881,19 +4880,12 @@ static int zm_processYield(zm_VM *vm, zm_Worker *worker, zm_State *state,
 	 *  --------------------------------------------------------
 	 */
 	case ZM_MACHINEOP_RUN | ZM_TASK_CONTINUE:
-	case ZM_MACHINEOP_RUN | ZM_TASK_VMSTOP:
 	case ZM_MACHINEOP_CLOSE_TASK | ZM_TASK_CONTINUE:
-	case ZM_MACHINEOP_CLOSE_TASK | ZM_TASK_VMSTOP:
-
-
 		ZM_D("ZM_MACHINEOP_RUN | ZM_TASK_CONTINUE");
-		if (cmd == ZM_TASK_VMSTOP) {
-			return ZM_PROCESS_VMBREAK;
-		}
+
 		zm_checkInnerYield(vm, state, result);
 
 		state->on.resume = result.resume;
-
 
 		break;
 
@@ -5328,9 +5320,6 @@ static int zm_stateGo(zm_VM* vm, zm_Worker *worker, zm_State *state)
 
 	if (processresult & ZM_PROCESS_EXCEPTION)
 		return ZM_RUN_EXCEPTION;
-
-	if (processresult & ZM_PROCESS_VMBREAK)
-		return ZM_RUN_VMBREAK;
 
 	if (justmoved)
 		if ((worker->nstate == 0) && (vm->currentsession.fixedworker))

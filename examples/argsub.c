@@ -38,7 +38,7 @@ ZMTASKDEF( Bob )
 		zmyield zmTERM;
 
 	zmstate ZM_TERM:
-		printf("Bob: (I think John is an only one state machine)\n");
+		printf("Bob: (I think John have only one state)\n");
 
 	ZMEND
 }

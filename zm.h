@@ -128,10 +128,7 @@ enum { /* * yield-command * */
 	ZM_TASK_RAISE_CONTINUE_EXCEPTION = ZM_B4(7),
 
 	/* implicit macro zmERROR */
-	ZM_TASK_RAISE_ERROR_EXCEPTION = ZM_B4(8),
-
-	/* explicit with shortcut - e.g. yield zmVMBREAK */
-	ZM_TASK_VMSTOP = ZM_B4(9)
+	ZM_TASK_RAISE_ERROR_EXCEPTION = ZM_B4(8)
 };
 
 
@@ -203,14 +200,12 @@ enum {
 /* **** RUN RETURN FLAG *** */
 #define ZM_RUN_IDLE 0
 #define ZM_RUN_AGAIN 1
-#define ZM_RUN_VMBREAK 2
-#define ZM_RUN_EXCEPTION 3
+#define ZM_RUN_EXCEPTION 2
 
 
 /* **** INTERNAL PROCESS MODE *** */
-#define ZM_PROCESS_VMBREAK 1
-#define ZM_PROCESS_STATEUNLINKED 2
-#define ZM_PROCESS_EXCEPTION 4
+#define ZM_PROCESS_STATEUNLINKED 1
+#define ZM_PROCESS_EXCEPTION 2
 
 
 /* **** IMPLODE MODE *** */
@@ -700,9 +695,6 @@ typedef void (*zm_tlock_cb)(void *data, int lock);
 /* ** special yield */
 #define zmEND        ZM_TASK_END
 #define zmTERM       ZM_TASK_TERM
-#define zmVMBREAK    ZM_TASK_VMSTOP
-
-
 
 /* ** resume modifier ** */
 #define zmNEXT(x) ZM_B3(x)
