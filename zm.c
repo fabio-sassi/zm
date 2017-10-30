@@ -34,8 +34,6 @@
 size_t zmg_mcounter = 0;
 
 
-#define zm_isTermState(s) ((s) == ZM_TERM)
-#define zm_isntTermState(s) ((s) != ZM_TERM)
 
 #define ZM_ELOCK_ON 1
 #define ZM_ELOCK_OFF 2
@@ -2134,7 +2132,7 @@ static void zm_resumeState(zm_VM *vm, zm_State *s)
 
 	/* this check is also done in RESBY.IL (should't fail)*/
 	if (s->flag & ZM_STATEFLAG_IMPLOSIONLOCK) { /* #UNBIND_IMLOCK */
-		if (zm_isntTermState(s->on.resume)) {
+		if (s->on.resume != ZM_TERM) {
 			zm_fatalInit();
 			zm_fatalDo(ZM_FATAL_UN, "RESST.IL", vm,
 			           "in resume state: found locked "
@@ -2250,7 +2248,7 @@ static void zm_resumeStateBy(zm_VM *vm, zm_State *s, void *argument,
 	}
 
 	if (s->flag & ZM_STATEFLAG_IMPLOSIONLOCK) {
-		if (zm_isntTermState(s->on.resume)) {
+		if (s->on.resume != ZM_TERM) {
 			zm_fatalInit();
 			zm_fatalOn(ref, filename, nline);
 			zm_fatalDo(ZM_FATAL_UCODE, "RESBY.IL", vm,
@@ -2797,7 +2795,7 @@ static void zm_setImplodeLock(zm_VM *vm, zm_LockAndImplode* li, zm_State *state)
 	if (zm_hasFlag(state, ZM_STATEFLAG_RUN)) {
 		/* #ASYNC_SERIALIZATION:
 		   async serialization is composed by 3 step:
-		   1) set a special vmop to the running state in implode lock
+		   1) set a special opmd to the running state in implode lock
 		   2) after serialization set a fake exception in running
 		      state that contain the state where implosion start
 		   3) the special vmop allow unlink the running state and
@@ -4549,6 +4547,7 @@ zm_VM* zm_newVM(const char *name)
 	vm->data = NULL;
 
 	vm->plock = false;
+	vm->pause = false;
 
 	vm->prepost = NULL;
 	/** ptasks contain a pointer to a ptask of the vm or NULL when empty */
@@ -4650,30 +4649,10 @@ void zm_freeVM(zm_VM* vm)
 	zm_free(zm_VM, vm);
 }
 
-static void zm_checkCloseYield(zm_VM *vm, zm_State *state, zm_Yield result,
-                                            const char *et, const char *ed)
-{
 
-	 /*
-	  * - task on TERM:      yield to normal-zmstate [FAIL]
-	  * - task not in TERM:  yield to ZM_TERM [FAIL]
-	  */
-	if (state->on.resume == ZM_TERM) {
-		zm_fatalInit();
-		zm_fatalOn(NULL, NULL, 0);
-		zm_fatalDo(ZM_FATAL_YIELD, et, vm,
-		           "in ZM_TERM only yield zmEND is "
-		           "permitted");
-	} else if (zm_isTermState(result.resume)) {
-		zm_fatalInit();
-		zm_fatalOn(NULL, NULL, 0);
-		zm_fatalDo(ZM_FATAL_YIELD, ed, vm,
-		           "an active task cannot yield "
-		           "directly to ZM_TERM use instead: "
-		           "zmTERM");
-	}
-
-}
+/*---------------------------------------------------------------------------
+ *  PROCESS STATE - RUN TASK
+ *  -----------------------------------------------------------------------*/
 
 static void zm_checkInnerYield(zm_VM *vm, zm_State *state, zm_Yield result)
 {
@@ -4700,7 +4679,13 @@ static void zm_checkInnerYield(zm_VM *vm, zm_State *state, zm_Yield result)
 		           "zmSUB(state)");
 	}
 
-	zm_checkCloseYield(vm, state, result, "YINN.T", "YINN.D");
+	if (result.resume == ZM_TERM) {
+		zm_fatalInit();
+		zm_fatalOn(NULL, NULL, 0);
+		zm_fatalDo(ZM_FATAL_YIELD, "YINN.TRM", vm,
+		           "a task cannot yield directly to ZM_TERM "
+		           "use instead: zmTERM");
+	}
 }
 
 
@@ -4745,60 +4730,16 @@ static void zm_checkParentYield(zm_VM *vm, zm_State *state, zm_Yield result,
 	}
 }
 
-/*---------------------------------------------------------------------------
- *  PROCESS STATE - RUN TASK
- *  -----------------------------------------------------------------------*/
+
 
 static void zm_processUnexpected(zm_VM *vm, zm_State *state, zm_Yield result)
 {
 	const char *op = zm_getMachineOpName(state, false);
-
-	switch(state->vmop) {
-
-	case ZM_MACHINEOP_RUN:
-	case ZM_MACHINEOP_END_TASK:
-		zm_fatalInit();
-		zm_fatalDo(ZM_FATAL_UNP, "WCMOP.U", vm,
-		           "unknow combination of machine result "
-		           "cmd = %s and vmop = %s",
-		           zm_getYieldCommandName(result.cmd),
-		           op);
-		break;
-
-	case ZM_MACHINEOP_CLOSE_TASK:
-		if (zm_hasntFlag(state, ZM_STATEFLAG_IMPLOSIONLOCK)) {
-			zm_fatalInit();
-			zm_fatalDo(ZM_FATAL_UNP, "WCMOP.NFLI", vm,
-			           "not found lock and implode flag in "
-			           "state with vmop = %s", op);
-		}
-
-		if (zm_isntTermState(state->on.resume)) {
-			zm_fatalInit();
-			zm_fatalDo(ZM_FATAL_UNP, "WCMOP.TR", vm,
-			           "not found term state in state with "
-			           "vmop = %s", op);
-		}
-
-		zm_checkCloseYield(vm, state, result, "WCMOP.T", "WCMOP.D");
-
-		break;
-
-
-	case ZM_MACHINEOP_NO_MORE_TO_DO:
-		zm_fatalInit();
-		zm_fatalDo(ZM_FATAL_UNP, "WCMOP.NMTD", vm,
-		           "vmop = %s after dt", op);
-		break;
-
-
-	default:
-		zm_fatalInit();
-		zm_fatalDo(ZM_FATAL_UNP, "WCMOP.UOP", vm,
-		           "unknow vmop = %d", state->vmop);
-	}
+	zm_fatalInit();
+	zm_fatalDo(ZM_FATAL_UNP, "WCMOP.U", vm,
+		   "Unknow combination of yield cmd = %s and vmop = %s",
+		   zm_getYieldCommandName(result.cmd), op);
 }
-
 
 
 static void zm_freeUnlockedException(zm_VM *vm, zm_Exception *e)
@@ -4861,35 +4802,78 @@ static zm_Yield zm_runMachine(zm_VM *vm, zm_Worker *worker, zm_State *s)
 	s->rearg = NULL;
 
 	return zm_r2Y(n);
-
 }
 
-static int zm_processYield(zm_VM *vm, zm_Worker *worker, zm_State *state,
-                                                         zm_Yield result)
+static zm_Yield zm_runTask(zm_VM *vm, zm_Worker *worker, zm_State *state)
+{
+	zm_Exception *checkexception = NULL;
+	zm_Yield y;
+
+
+	ZM_D("runState - begin");
+
+	/* check for exception and catch */
+	if (zm_hasFlag(state, ZM_STATEFLAG_CATCH)) {
+		zm_disableFlag(state, ZM_STATEFLAG_CATCH);
+
+		if (state->exception) {
+			checkexception = state->exception;
+
+			/* resume on catch #EXCEPT_WORKFLOW */
+			if (state->on.resume != ZM_TERM)
+				state->on.resume = state->on.c4tch;
+		}
+	}
+
+
+	/* in run mode a resume point must always have to been set */
+	if (state->on.resume == 0) {
+		zm_fatalInit();
+		zm_fatalOn(NULL, NULL, 0);
+		zm_fatalDo(ZM_FATAL_YIELD, "YRES.0", vm,
+		           "resume zmstate is set 0 (possible cause: "
+		           "last zmyield hasn't define the "
+		           "proper resume point");
+	}
+
+	ZM_D("runState: (resume = %d) machine: %s", state->on.resume,
+	     zm_getCurrentMachineName(vm));
+
+	/* execute a machine step */
+	y = zm_runMachine(vm, worker, state);
+
+	ZM_D("runState: resume: %d iter: %d catch: %d cmd: %d",
+	     y.resume, y.iter, y.c4tch, y.cmd);
+
+	if (!checkexception)
+		return y;
+
+	/* free exception if is unlock otherwise go fatal */
+	zm_freeUnlockedException(vm, checkexception);
+
+	return y;
+}
+
+/*
+ * process normal mode yield
+ */
+static int zm_normYield(zm_VM *vm, zm_Worker *worker, zm_State *state, 
+                                                      zm_Yield result)
 {
 	int cmd =  ZM_B4(result.cmd);
-	int resop = state->vmop | cmd;
 
-	ZM_D("process_state[30] - eval machine dt");
+	switch( cmd ) {
 
-	switch( resop ) {
-
-	/**
-	 *  --------------------------------------------------------
-	 *  context: ZM_MACHINEOP_RUN:
-	 *  --------------------------------------------------------
-	 */
-	case ZM_MACHINEOP_RUN | ZM_TASK_CONTINUE:
-	case ZM_MACHINEOP_CLOSE_TASK | ZM_TASK_CONTINUE:
+	case ZM_TASK_CONTINUE:
 		ZM_D("ZM_MACHINEOP_RUN | ZM_TASK_CONTINUE");
 
 		zm_checkInnerYield(vm, state, result);
 
 		state->on.resume = result.resume;
 
-		break;
+		return 0;
 
-	case ZM_MACHINEOP_RUN | ZM_TASK_RAISE_CONTINUE_EXCEPTION: {
+	case ZM_TASK_RAISE_CONTINUE_EXCEPTION: {
 		zm_Exception *e = state->exception;
 		zm_State *lastbeforecatch, *catchstate;
 
@@ -4933,7 +4917,7 @@ static int zm_processYield(zm_VM *vm, zm_Worker *worker, zm_State *state,
 	}
 
 
-	case ZM_MACHINEOP_RUN | ZM_TASK_RAISE_ERROR_EXCEPTION: {
+	case ZM_TASK_RAISE_ERROR_EXCEPTION: {
 		zm_Exception *e = state->exception;
 
 		ZM_D("ZM_MACHINEOP_RUN | ZM_TASK_RAISE_ERROR");
@@ -4961,16 +4945,9 @@ static int zm_processYield(zm_VM *vm, zm_Worker *worker, zm_State *state,
 
 
 	/** distructor of the task  */
-	case ZM_MACHINEOP_RUN | ZM_TASK_TERM:
+	case ZM_TASK_TERM:
 		ZM_D("ZM_MACHINEOP_RUN | ZM_TASK_TERM");
 		/* CHECK_OR_NOT */
-		/*if (result.c4tch != 0) {
-			zm_fatal ...
-		}
-
-		if (result.iter != 0) {
-			zm_fatal ...
-		}*/
 
 		zm_suspendCurrentState(vm, result, true);
 
@@ -4980,41 +4957,25 @@ static int zm_processYield(zm_VM *vm, zm_Worker *worker, zm_State *state,
 
 		return ZM_PROCESS_STATEUNLINKED;
 
-	case ZM_MACHINEOP_RUN | ZM_TASK_END:
+	case ZM_TASK_END:
 		zm_fatalInit();
 		zm_fatalOn(NULL, NULL, 0);
-		zm_fatalDo(ZM_FATAL_YIELD, "YEND.NVT", vm,
-			   "yield zmEND is permitted only in closing task "
+		zm_fatalDo(ZM_FATAL_YIELD, "YNORM.YE", vm,
+			   "yield zmEND is permitted only in closing mode "
 			   "inside ZM_TERM zmstate");
-		break;
-
-	case ZM_MACHINEOP_CLOSE_TASK | ZM_TASK_END:
-		/*  CHECK_OR_NOT	*/
-
-		if (zm_hasntFlag(state, ZM_STATEFLAG_IMPLOSIONLOCK)) {
-			zm_fatalInit();
-			zm_fatalDo(ZM_FATAL_UNP, "YEND.NLI", vm,
-			           "task not in close mode with vmop="
-			           "ZM_MACHINEOP_CLOSE_TASK");
-		}
-
-		ZM_D("ZM_MACHINEOP_RUN | ZM_TASK_END");
-
-		state->vmop = ZM_MACHINEOP_END_TASK;
-		break;
-
+		return 0;
 
 	/** Task Suspend - e.g. yield TO(foo) */
-	case ZM_MACHINEOP_RUN | ZM_TASK_SUSPEND:
+	case ZM_TASK_SUSPEND:
 		ZM_D("ZM_MACHINEOP_RUN | ZM_TASK_SUSPEND");
 
 		if (zm_isTask(state)) {
 			zm_suspendCurrentState(vm, result, false);
 			return ZM_PROCESS_STATEUNLINKED;
-		} /* else -> suspend and resume parent */
+		} /* else -> suspend and resume caller */
 
 	/** Task suspend (iter) - e.g. yield zmCALLER */
-	case ZM_MACHINEOP_RUN | ZM_TASK_SUSPEND_AND_RESUME_CALLER:
+	case ZM_TASK_SUSPEND_AND_RESUME_CALLER:
 		ZM_D("ZM_MACHINEOP_RUN | TASK_SUSPEND_AND_RES_CALLER");
 
 		/* CHECK_OR_NOT */
@@ -5028,8 +4989,8 @@ static int zm_processYield(zm_VM *vm, zm_Worker *worker, zm_State *state,
 
 		return ZM_PROCESS_STATEUNLINKED;
 
-	/** Task Suspend - e.g. yield SUB(foo) */
-	case ZM_MACHINEOP_RUN | ZM_TASK_SUSPEND_WAITING_SUBTASK:
+	/** Task suspend waiting subtask - e.g. yield SUB(foo) */
+	case ZM_TASK_SUSPEND_WAITING_SUBTASK:
 		ZM_D("ZM_MACHINEOP_RUN | ZM_TASK_SUSPEND_WAIT_SUB");
 		/* suspend with waiting = true (ZM_STATEFLAG_WAITING) */
 		zm_suspendCurrentState(vm, result, true);
@@ -5038,7 +4999,7 @@ static int zm_processYield(zm_VM *vm, zm_Worker *worker, zm_State *state,
 
 
 	/** Task suspend waiting event - e.g. yield EVENT(...)*/
-	case ZM_MACHINEOP_RUN | ZM_TASK_BUSY_WAITING_EVENT: {
+	case ZM_TASK_BUSY_WAITING_EVENT: {
 		/* zmEVENT has just:
 		 * - set flag ZM_STATEFLAG_EVENTLOCKED #EVB_FLAG
 		 * - set state->next to an eventbinder instance pointer
@@ -5071,77 +5032,47 @@ static int zm_processYield(zm_VM *vm, zm_Worker *worker, zm_State *state,
 		return ZM_PROCESS_STATEUNLINKED;
 	}
 
-
-
-
-
-	/**
-	 *  --------------------------------------------------------
-	 * context: [unknow]
-	 *
-	 * Unexpected combination: report error
-	 *  --------------------------------------------------------
-	 */
 	default:
 		zm_processUnexpected(vm, state, result);
+		return 0;
 	}
-
-	return 0;
 }
 
-
-static zm_Yield zm_runTask(zm_VM *vm, zm_Worker *worker, zm_State *state)
+/*
+ * process close mode yield
+ */
+static int zm_closeYield(zm_VM *vm, zm_Worker *worker, zm_State *state, 
+                                                       zm_Yield result)
 {
-	zm_Exception *checkexception = NULL;
-	zm_Yield y;
+	int cmd = ZM_B4(result.cmd);
 
+	switch( cmd ) {
 
-	ZM_D("runState - begin");
+	case ZM_TASK_END:
+		ZM_D("ZM_MACHINEOP_CLOSE_TASK | ZM_TASK_END");
+		/*  CHECK_OR_NOT */
 
-	/* check for exception and catch */
-	if (zm_hasFlag(state, ZM_STATEFLAG_CATCH)) {
-		zm_disableFlag(state, ZM_STATEFLAG_CATCH);
-
-		if (state->exception) {
-			checkexception = state->exception;
-
-			/* resume on catch #EXCEPT_WORKFLOW */
-			if (zm_isntTermState(state->on.resume))
-				state->on.resume = state->on.c4tch;
+		if (zm_hasntFlag(state, ZM_STATEFLAG_IMPLOSIONLOCK)) {
+			zm_fatalInit();
+			zm_fatalDo(ZM_FATAL_UNP, "YEND.NLI", vm,
+			           "task not in close mode with vmop="
+			           "ZM_MACHINEOP_CLOSE_TASK");
 		}
-	}
 
+		state->vmop = ZM_MACHINEOP_END_TASK;
 
-	/* in run mode a resume point must always have to been set */
-	if (state->on.resume == 0) {
+		return 0;
+
+	default:
 		zm_fatalInit();
 		zm_fatalOn(NULL, NULL, 0);
-		zm_fatalDo(ZM_FATAL_YIELD, "YRES.0", vm,
-		           "resume zmstate is set 0 (possible cause: "
-		           "last zmyield hasn't define the "
-		           "proper resume point");
+		zm_fatalDo(ZM_FATAL_YIELD, "YEND.WY", vm,
+		           "in ZM_TERM only yield zmEND is "
+		           "permitted");
+
+		return 0;
 	}
-
-	ZM_D("runState: (resume = %d) machine: %s", state->on.resume,
-	     zm_getCurrentMachineName(vm));
-
-	/* execute a machine step */
-	y = zm_runMachine(vm, worker, state);
-
-	ZM_D("runState: resume: %d iter: %d catch: %d cmd: %d",
-	     y.resume, y.iter, y.c4tch, y.cmd);
-
-	if (!checkexception)
-		return y;
-
-	/* free exception if is unlock otherwise go fatal */
-	zm_freeUnlockedException(vm, checkexception);
-
-	return y;
 }
-
-
-
 
 
 
@@ -5156,7 +5087,11 @@ static int zm_processState(zm_VM *vm, zm_Worker *worker, zm_State *state)
 		/* RUN: Excute a step of machine */
 		zm_Yield y = zm_runTask(vm, worker, state);
 
-		return zm_processYield(vm, worker, state, y);
+		if (state->vmop == ZM_MACHINEOP_CLOSE_TASK) {
+			return zm_closeYield(vm, worker, state, y);
+		}
+	
+		return zm_normYield(vm, worker, state, y);
 	}
 
 	case ZM_MACHINEOP_END_TASK:
@@ -5353,6 +5288,11 @@ int zm_mGo(zm_VM* vm, zm_Machine* machine, unsigned int ncycle)
 
 	while(ncycle > 0) {
 		ZM_D("GO: ~********** STEP #%d **********~", ncycle);
+
+		if (vm->pause) {
+			vm->pause = false;
+			return ZM_RUN_AGAIN | ZM_RUN_BREAK;
+		}
 
 		/* CLEAN THIS CODE FIXME */
 		/* CLEAN THIS CODE FIXME */

@@ -327,8 +327,10 @@ ZMTASKDEF(Upper)
 int main(int argc, char *argv[]) {
 	if (argc != 2) {
 		printf("\nusage:\n\t%s pattern\n", argv[0]);
-		printf("\nThe application upper case of the first two longest\n");
-		printf("patter of a given song text.\n");
+		printf("\nThe application search for the first two longest\n"
+		       "occurence of pattern and uppercase them.\n\n");
+		printf("Search is performed on this text:\n");
+		printf("--------------------\n%s\n", text);
 		exit(0);
 	}
 

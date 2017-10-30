@@ -47,7 +47,7 @@ ZMTASKDEF( task ) ZMSTATES
 		zmyield 3;
 	}
 	zmstate 3:
-		printf("* task: 3\n");
+		printf("* task: 3 - end\n");
 		zmyield zmTERM;
 ZMEND
 

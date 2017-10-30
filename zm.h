@@ -201,6 +201,7 @@ enum {
 #define ZM_RUN_IDLE 0
 #define ZM_RUN_AGAIN 1
 #define ZM_RUN_EXCEPTION 2
+#define ZM_RUN_BREAK 4
 
 
 /* **** INTERNAL PROCESS MODE *** */
@@ -464,6 +465,7 @@ struct zm_VM_ {
 	void *data;
 
 	int plock;
+	int pause;
 
 	/* pre/post process state: vm, machine, state, ispost*/
 	zm_process_cb prepost;
@@ -912,6 +914,7 @@ void zm_freeUncaughtError(zm_VM *vm, zm_Exception *e);
 
 void zm_printError(zm_Print *out, zm_Exception *e, int trace);
 
+
 /* vm - virtual mapper */
 zm_VM* zm_newVM(const char *name);
 int zm_closeVM(zm_VM* vm);
@@ -922,8 +925,10 @@ void zm_setProcessStateCallback(zm_VM *vm, zm_process_cb p);
 void zm_setThreadLock(zm_tlock_cb cb, void* data);
 
 /* process */
+#define zm_break(vm) (vm)->pause = true
 int zm_go(zm_VM* vm, unsigned int ncycle);
 int zm_mGo(zm_VM* vm, zm_Machine* m, unsigned int ncycle);
+
 
 
 #endif
