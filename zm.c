@@ -531,7 +531,7 @@ static void zm_fatalPrintErrorInfo(zm_Print *out, zm_VM *vm, zm_kfatal_t kind)
 		zm_print(out, "\tzmstate: resume=%d iter=%d catch=%d\n",
 		         state->on.resume, state->on.iter, state->on.c4tch);
 
-		zm_print(out, "\tzmstate: vmop=%s\n",
+		zm_print(out, "\tzmstate: tmode=%s\n",
 		         zm_getMachineOpName(state, false));
 
 	}
@@ -1165,25 +1165,24 @@ static void zm_printFlags(zm_Print* out, zm_State *s, int compact)
 
 static const char* zm_getMachineOpName(zm_State *s, int compact)
 {
-	switch (s->vmop) {
-	case ZM_MACHINEOP_RUN:
-		return (compact) ? "ORUN" : "ZM_MACHINEOP_RUN";
+	switch (s->tmode) {
+	case ZM_TMODE_NORMAL:
+		return (compact) ? "Onrm" : "ZM_TMODE_NORMAL";
 
-	case ZM_MACHINEOP_END_TASK:
-		return (compact) ? "OEND" : "ZM_MACHINEOP_END_TASK";
+	case ZM_TMODE_END:
+		return (compact) ? "OEND" : "ZM_TMODE_END";
 
-	case ZM_MACHINEOP_CLOSE_TASK:
-		return (compact) ? "OCLO" : "ZM_MACHINEOP_CLOSE_TASK";
+	case ZM_TMODE_CLOSE:
+		return (compact) ? "OCLO" : "ZM_TMODE_CLOSE";
 
-	case ZM_MACHINEOP_NO_MORE_TO_DO:
-		return (compact) ? "ONUL" : "ZM_MACHINEOP_NO_MORE_TO_DO";
+	case ZM_TMODE_OFF:
+		return (compact) ? "ONUL" : "ZM_TMODE_OFF";
 
-	case ZM_MACHINEOP_UNLINK_TASK_AND_IMPLODE:
-		return (compact) ? "ULN" :
-		       "ZM_MACHINEOP_UNLINK_TASK_AND_IMPLODE";
+	case ZM_TMODE_ASYNCIMPLODE:
+		return (compact) ? "OIMP" : "ZM_TMODE_ASYNCIMPLODE";
 
 	default:
-		return (compact) ? "O???" : "ZM_MACHINEOP_??????????";
+		return (compact) ? "O???" : "ZM_MACHINEOP_???????";
 	}
 }
 
@@ -1212,7 +1211,7 @@ void zm_printStateCompact(zm_Print *out, zm_State *s)
 		zm_print(out, "ncb ");
 	}
 
-	if (s->vmop != ZM_MACHINEOP_RUN)
+	if (s->tmode != ZM_TMODE_NORMAL)
 		zm_print(out, "%s ", zm_getMachineOpName(s, true));
 
 	if (s->exception)
@@ -1255,8 +1254,8 @@ void zm_printState(zm_Print *out, zm_State *s)
 	          s->on.resume, s->on.iter, s->on.c4tch);
 
 
-	if (s->vmop != ZM_MACHINEOP_RUN)
-		zm_iprint(out, "vmop: %s\n", zm_getMachineOpName(s, false));
+	if (s->tmode != ZM_TMODE_NORMAL)
+		zm_iprint(out, "tmode: %s\n", zm_getMachineOpName(s, false));
 
 	#ifdef ZM_DEBUG_MACHINENAME
 		zm_iprint(out, "machine: %s\n", s->debugmachinename);
@@ -2739,7 +2738,7 @@ static void zm_implosionUnlinkRunning(zm_VM* vm, zm_State *state,
 	li->running = state;
 
 	/* state cannot be currentstate (see ABRT.SELF, DEEPLCK.SELF)  */
-	state->vmop = ZM_MACHINEOP_UNLINK_TASK_AND_IMPLODE;
+	state->tmode = ZM_TMODE_ASYNCIMPLODE;
 }
 
 
@@ -2751,12 +2750,11 @@ static void zm_setImplodeLock(zm_VM *vm, zm_LockAndImplode* li, zm_State *state)
 	if (state->flag & ZM_STATEFLAG_EVENTLOCKED)
 		zm_unbindEvent(vm, state, NULL, ZM_EVENT_UNBIND_ABORT);
 
-	/** save current zmop in iter to be extract with*/
-	/** zmGetCloseOp*/
+	/** save current zmop in iter to be extract with zmGetCloseOp*/
 	state->on.iter = state->on.resume;
 	state->on.resume = ZM_TERM;
-	/** state->catch must be preserved to allow catch*/
-	/** in ZM_TERM #LOCK_SAVE_CATCH (this happend when a task */
+	/** state->catch must be preserved to allow catch in ZM_TERM */
+	/** #LOCK_SAVE_CATCH (this happend when a task */
 	/** is aborted before process the catch) */
 
 	/* This must be done after eventUnbind call because*/
@@ -2764,7 +2762,7 @@ static void zm_setImplodeLock(zm_VM *vm, zm_LockAndImplode* li, zm_State *state)
 	/* #UNBIND_IMLOCK*/
 	state->flag |= ZM_STATEFLAG_IMPLOSIONLOCK;
 
-	state->vmop = ZM_MACHINEOP_CLOSE_TASK;
+	state->tmode = ZM_TMODE_CLOSE;
 
 	if (!li)
 		return;
@@ -2795,10 +2793,10 @@ static void zm_setImplodeLock(zm_VM *vm, zm_LockAndImplode* li, zm_State *state)
 	if (zm_hasFlag(state, ZM_STATEFLAG_RUN)) {
 		/* #ASYNC_SERIALIZATION:
 		   async serialization is composed by 3 step:
-		   1) set a special opmd to the running state in implode lock
+		   1) set a special tmode to the running state in implode lock
 		   2) after serialization set a fake exception in running
 		      state that contain the state where implosion start
-		   3) the special vmop allow unlink the running state and
+		   3) the special tmode allow unlink the running state and
 		      resume the implosion start state
 
 		   step 1), 2) are sync to this operation while 3) is async
@@ -4159,7 +4157,7 @@ zm_State* izm_addTask(zm_VM *vm, zm_Machine *machine, void *data, bool subtask,
 	/**** Allocate State ****/
 	state = zm_alloc(zm_State);
 
-	state->vmop = ZM_MACHINEOP_RUN; /* after resume will be RUN */
+	state->tmode = ZM_TMODE_NORMAL; /* after resume will be RUN */
 	state->flag = flag;
 
 	#ifdef ZM_DEBUG_MACHINENAME
@@ -4236,8 +4234,8 @@ static int zm_requestFreeState(zm_VM *vm, zm_State *state, const char* refname)
 		           "that is just marked to be free");
 	}
 
-	if (state->vmop == ZM_MACHINEOP_NO_MORE_TO_DO) {
-		/*** this vmop is set by ZM_MACHINEOP_END_TASK*/
+	if (state->tmode == ZM_TMODE_OFF) {
+		/*** this tmode is set by ZM_TMODE_END*/
 		/*** then is possible to free state in a sync way*/
 		zm_free(zm_State, state);
 		return true;
@@ -4251,7 +4249,7 @@ static int zm_requestFreeState(zm_VM *vm, zm_State *state, const char* refname)
 	}
 
 	/* if ZM_STATEFLAG_IMPLOSIONLOCK the state will be closed but
-	 * is not just closed because vmop != ZM_MACHINEOP_NO_MORE_TO_DO
+	 * is not just closed because tmode != ZM_TMODE_OFF
 	 * ==> set autofree flag to perform an async free */
 	zm_enableFlag(state, ZM_STATEFLAG_AUTOFREE);
 
@@ -4737,7 +4735,7 @@ static void zm_processUnexpected(zm_VM *vm, zm_State *state, zm_Yield result)
 	const char *op = zm_getMachineOpName(state, false);
 	zm_fatalInit();
 	zm_fatalDo(ZM_FATAL_UNP, "WCMOP.U", vm,
-		   "Unknow combination of yield cmd = %s and vmop = %s",
+		   "Unknow combination of yield cmd = %s and tmode = %s",
 		   zm_getYieldCommandName(result.cmd), op);
 }
 
@@ -4865,7 +4863,7 @@ static int zm_normYield(zm_VM *vm, zm_Worker *worker, zm_State *state,
 	switch( cmd ) {
 
 	case ZM_TASK_CONTINUE:
-		ZM_D("ZM_MACHINEOP_RUN | ZM_TASK_CONTINUE");
+		ZM_D("ZM_TMODE_NORMAL | ZM_TASK_CONTINUE");
 
 		zm_checkInnerYield(vm, state, result);
 
@@ -4879,7 +4877,7 @@ static int zm_normYield(zm_VM *vm, zm_Worker *worker, zm_State *state,
 
 		/* #CONTINUE_EXCEPT*/
 
-		ZM_D("ZM_MACHINEOP_RUN | ZM_TASK_RAISE_CONTINUE");
+		ZM_D("ZM_TMODE_NORMAL | ZM_TASK_RAISE_CONTINUE");
 
 		lastbeforecatch = zm_getContinueBegin(vm, state, e);
 
@@ -4920,7 +4918,7 @@ static int zm_normYield(zm_VM *vm, zm_Worker *worker, zm_State *state,
 	case ZM_TASK_RAISE_ERROR_EXCEPTION: {
 		zm_Exception *e = state->exception;
 
-		ZM_D("ZM_MACHINEOP_RUN | ZM_TASK_RAISE_ERROR");
+		ZM_D("ZM_TMODE_NORMAL | ZM_TASK_RAISE_ERROR");
 
 		/* remove reference from raise state */
 		state->exception = NULL;
@@ -4946,7 +4944,7 @@ static int zm_normYield(zm_VM *vm, zm_Worker *worker, zm_State *state,
 
 	/** distructor of the task  */
 	case ZM_TASK_TERM:
-		ZM_D("ZM_MACHINEOP_RUN | ZM_TASK_TERM");
+		ZM_D("ZM_TMODE_NORMAL | ZM_TASK_TERM");
 		/* CHECK_OR_NOT */
 
 		zm_suspendCurrentState(vm, result, true);
@@ -4967,7 +4965,7 @@ static int zm_normYield(zm_VM *vm, zm_Worker *worker, zm_State *state,
 
 	/** Task Suspend - e.g. yield TO(foo) */
 	case ZM_TASK_SUSPEND:
-		ZM_D("ZM_MACHINEOP_RUN | ZM_TASK_SUSPEND");
+		ZM_D("ZM_TMODE_NORMAL | ZM_TASK_SUSPEND");
 
 		if (zm_isTask(state)) {
 			zm_suspendCurrentState(vm, result, false);
@@ -4976,7 +4974,7 @@ static int zm_normYield(zm_VM *vm, zm_Worker *worker, zm_State *state,
 
 	/** Task suspend (iter) - e.g. yield zmCALLER */
 	case ZM_TASK_SUSPEND_AND_RESUME_CALLER:
-		ZM_D("ZM_MACHINEOP_RUN | TASK_SUSPEND_AND_RES_CALLER");
+		ZM_D("ZM_TMODE_NORMAL | TASK_SUSPEND_AND_RES_CALLER");
 
 		/* CHECK_OR_NOT */
 		zm_checkParentYield(vm, state, result,(cmd == ZM_TASK_SUSPEND));
@@ -4991,7 +4989,7 @@ static int zm_normYield(zm_VM *vm, zm_Worker *worker, zm_State *state,
 
 	/** Task suspend waiting subtask - e.g. yield SUB(foo) */
 	case ZM_TASK_SUSPEND_WAITING_SUBTASK:
-		ZM_D("ZM_MACHINEOP_RUN | ZM_TASK_SUSPEND_WAIT_SUB");
+		ZM_D("ZM_TMODE_NORMAL | ZM_TASK_SUSPEND_WAIT_SUB");
 		/* suspend with waiting = true (ZM_STATEFLAG_WAITING) */
 		zm_suspendCurrentState(vm, result, true);
 
@@ -5011,7 +5009,7 @@ static int zm_normYield(zm_VM *vm, zm_Worker *worker, zm_State *state,
 		 * suspendCurrentState */
 		state->next = (zm_State*)evb->statenext;
 
-		ZM_D("ZM_MACHINEOP_RUN | TASK_BUSY_WAITING_EVENT");
+		ZM_D("ZM_TMODE_NORMAL | TASK_BUSY_WAITING_EVENT");
 
 		/* Temporary disable event flag to allow debug print in
 		   suspend current */
@@ -5049,17 +5047,17 @@ static int zm_closeYield(zm_VM *vm, zm_Worker *worker, zm_State *state,
 	switch( cmd ) {
 
 	case ZM_TASK_END:
-		ZM_D("ZM_MACHINEOP_CLOSE_TASK | ZM_TASK_END");
+		ZM_D("ZM_TMODE_CLOSE | ZM_TASK_END");
 		/*  CHECK_OR_NOT */
 
 		if (zm_hasntFlag(state, ZM_STATEFLAG_IMPLOSIONLOCK)) {
 			zm_fatalInit();
 			zm_fatalDo(ZM_FATAL_UNP, "YEND.NLI", vm,
-			           "task not in close mode with vmop="
-			           "ZM_MACHINEOP_CLOSE_TASK");
+			           "task not in close mode with tmode="
+			           "ZM_TMODE_CLOSE");
 		}
 
-		state->vmop = ZM_MACHINEOP_END_TASK;
+		state->tmode = ZM_TMODE_END;
 
 		return 0;
 
@@ -5078,27 +5076,27 @@ static int zm_closeYield(zm_VM *vm, zm_Worker *worker, zm_State *state,
 
 static int zm_processState(zm_VM *vm, zm_Worker *worker, zm_State *state)
 {
-	ZM_D("process_state[0] - state = [ref %lx]  vmop = %d", state,
-	     state->vmop);
+	ZM_D("process_state[0] - state = [ref %lx]  tmode = %d", state,
+	     state->tmode);
 
-	switch(state->vmop) {
-	case ZM_MACHINEOP_RUN:
-	case ZM_MACHINEOP_CLOSE_TASK: {
+	switch(state->tmode) {
+	case ZM_TMODE_NORMAL:
+	case ZM_TMODE_CLOSE: {
 		/* RUN: Excute a step of machine */
 		zm_Yield y = zm_runTask(vm, worker, state);
 
-		if (state->vmop == ZM_MACHINEOP_CLOSE_TASK) {
+		if (state->tmode == ZM_TMODE_CLOSE) {
 			return zm_closeYield(vm, worker, state, y);
 		}
 	
 		return zm_normYield(vm, worker, state, y);
 	}
 
-	case ZM_MACHINEOP_END_TASK:
-		/* Remove the state from list (must be invoked in
-		 * ZM_TERM only when all user-resource as been free)
-		 */
-		ZM_D("ZM_MACHINEOP_END_TASK:");
+	case ZM_TMODE_END:
+		/* Remove the state from list (should be invoked in
+		 * ZM_TERM when all user-resource as been free) */
+
+		ZM_D("ZM_TMODE_END:");
 
 		if (zm_isSubTask(state)) {
 			/* resume parent (end mode) done before
@@ -5112,7 +5110,7 @@ static int zm_processState(zm_VM *vm, zm_Worker *worker, zm_State *state)
 
 		zm_unlinkCurrentState(vm);
 
-		state->vmop = ZM_MACHINEOP_NO_MORE_TO_DO;
+		state->tmode = ZM_TMODE_OFF;
 
 		ZM_D("CLOSE TASK: remove state from siblings ...");
 		zm_removeStateFromSiblings(vm, state);
@@ -5141,7 +5139,7 @@ static int zm_processState(zm_VM *vm, zm_Worker *worker, zm_State *state)
 			zm_fatalInit();
 			zm_fatalDo(ZM_FATAL_UNP, "PPS.EEN", vm,
 			           "exception still present in "
-			           "ZM_MACHINEOP_END_TASK");
+			           "ZM_TMODE_END");
 		}
 
 		if (zm_hasFlag(state, ZM_STATEFLAG_AUTOFREE)) {
@@ -5153,7 +5151,7 @@ static int zm_processState(zm_VM *vm, zm_Worker *worker, zm_State *state)
 		return ZM_PROCESS_STATEUNLINKED;
 
 
-	case ZM_MACHINEOP_UNLINK_TASK_AND_IMPLODE: {
+	case ZM_TMODE_ASYNCIMPLODE: {
 		/* this is a special for lock and implode
 		   #ASYNC_SERIALIZATION [step 3]*/
 		zm_State *imstart;
@@ -5163,11 +5161,11 @@ static int zm_processState(zm_VM *vm, zm_Worker *worker, zm_State *state)
 		y.iter = state->on.iter;
 		y.c4tch = state->on.c4tch;
 
-		ZM_D("ZM_MACHINEOP_UNLINK_TASK_AND_IMPLODE");
+		ZM_D("ZM_TMODE_ASYNCIMPLODE");
 
 		imstart = zm_popAsyncImplosionStart(state);
 
-		state->vmop = ZM_MACHINEOP_CLOSE_TASK;
+		state->tmode = ZM_TMODE_CLOSE;
 
 		/* All implosion task, except the imstart, must be in
 		 * waiting subtask (see #IMPLODE_WAITING_CHAIN)
@@ -5181,18 +5179,18 @@ static int zm_processState(zm_VM *vm, zm_Worker *worker, zm_State *state)
 		return ZM_PROCESS_STATEUNLINKED;
 	}
 
-	case ZM_MACHINEOP_NO_MORE_TO_DO:
+	case ZM_TMODE_OFF:
 		zm_fatalInit();
 		zm_fatalDo(ZM_FATAL_UNP, "PPS.NMTD", vm,
-		           "unexpected vmop in processState"
-		           "(vmop = ZM_MACHINEOP_NO_MORE_TO_DO)");
+		           "unexpected tmode in processState"
+		           "(tmode = ZM_TMODE_OFF)");
 		return 0;
 
 	default:
 		zm_fatalInit();
 		zm_fatalDo(ZM_FATAL_UNP, "PPS.UVMOP", vm,
-		           "unexpected vmop in processState (vmop = %d)",
-		           state->vmop);
+		           "unexpected tmode in processState (tmode = %d)",
+		           state->tmode);
 		return 0;
 	}
 }

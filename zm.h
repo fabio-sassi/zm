@@ -134,18 +134,20 @@ enum { /* * yield-command * */
 
 
 
-/* vmop */
+/* tmode */
 enum {
-	ZM_MACHINEOP_RUN = 0,
+	ZM_TMODE_NORMAL = 0,
 
-	ZM_MACHINEOP_UNLINK_TASK_AND_IMPLODE,
+	ZM_TMODE_CLOSE,
 
-	ZM_MACHINEOP_CLOSE_TASK,
+	ZM_TMODE_END,
 
-	ZM_MACHINEOP_END_TASK,
-
-	ZM_MACHINEOP_NO_MORE_TO_DO
+	ZM_TMODE_OFF,
+	
+	ZM_TMODE_ASYNCIMPLODE
 };
+
+
 
 
 /* * Special zmstate * */
@@ -284,7 +286,7 @@ struct zm_State_ {
 
 	/* State */
 	zm_ResumeState on;
-	uint8_t vmop;
+	uint8_t tmode;
 
 	#ifdef ZM_DEBUG_MACHINENAME
 		const char* debugmachinename;
