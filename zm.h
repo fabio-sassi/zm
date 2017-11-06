@@ -69,12 +69,6 @@
 	#define ZM_DEBUG_MACHINENAME
 #endif
 
-#if ZM_DEBUG_LEVEL >= 1
-	#define ZM_D zm_log
-#else
-	#define ZM_D if (0) zm_log
-#endif
-
 
 #if (!defined(ZM_LITTLE_ENDIAN)) && (!defined(ZM_BIG_ENDIAN))
 	#define ZM_BYTEORDER_LE 1
@@ -613,12 +607,6 @@ typedef void (*zm_tlock_cb)(void *data, int lock);
 
 #define zmResponse(r)                                                         \
         izmResponse(vm, (r), __FILE__, __LINE__)
-
-/* oppure lo chiamo zmLet TODO FIXME ??? */
-/* oppure lo chiamo zmLet TODO FIXME ??? */
-/* oppure lo chiamo zmLet TODO FIXME ??? cmq ho aggiunto zmSetData perchè
-   solo lo shortcut non mi convincenva e fose come shortcut dovremmo cambiarlo
-   in zmLet */
 
 #define zmData(d)                                                             \
         izmSetData(vm, d)

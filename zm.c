@@ -40,9 +40,10 @@ size_t zmg_mcounter = 0;
 #define ZM_ELOCK_REUSE 3
 
 
-/*---------------------------------------------------------------------------
- *  state traversing
- *  -----------------------------------------------------------------------*/
+
+/* ----------------------------------------------------------------------------
+ *  STATE TRAVERSING
+ * --------------------------------------------------------------------------*/
 
 
 static size_t zm_deep(zm_State *sub)
@@ -158,9 +159,9 @@ void* izmGetCallerData(zm_VM *vm)
 
 
 
-/*---------------------------------------------------------------------------
+/* ----------------------------------------------------------------------------
  *  MEMORY UTILITY
- *  -----------------------------------------------------------------------*/
+ * --------------------------------------------------------------------------*/
 
 
 
@@ -202,10 +203,15 @@ void zm_mfree(size_t size, void *ptr)
 	free(ptr);
 }
 
-/*---------------------------------------------------------------------------
- *  PRINT UTILITY
- *  -----------------------------------------------------------------------*/
+/* ----------------------------------------------------------------------------
+ *  DEBUG UTILITY 
+ * --------------------------------------------------------------------------*/
 
+#if ZM_DEBUG_LEVEL >= 1
+	#define ZM_D zm_log
+#else
+	#define ZM_D if (0) zm_log
+#endif
 
 static void zm_log(const char *fmt, ...)
 {
@@ -223,6 +229,113 @@ static void zm_log(const char *fmt, ...)
 	fflush(out);
 }
 
+/* ----------------------------------------------------------------------------
+ *  PRINT UTILITY
+ * --------------------------------------------------------------------------*/
+
+
+static int zm_havePrintBuffer(zm_Print *out, int len)
+{
+	if (!out->buffer.data)
+		return false;
+
+	if (len < 0) {
+		zm_removePrintBuffer(out);
+		return false;
+	}
+
+	/* add one byte for the terminal null byte */
+	len += 1;
+
+	if ((out->buffer.used + len) >= out->buffer.size) {
+		void *ptr = (void*)out->buffer.data;
+		size_t size = out->buffer.used + len + 512;
+
+		ptr = zm_mrealloc(ptr, size, false);
+
+		if (!ptr) {
+			zm_removePrintBuffer(out);
+			return false;
+		}
+		
+		out->buffer.data = (char*)ptr;
+		out->buffer.size = size;
+	}
+
+	return true;
+}
+
+static int zm_vprintf(zm_Print *out, const char *fmt, va_list args)
+{
+	int len = vfprintf(out->file, fmt, args);
+
+	fflush(out->file);
+
+	return len;
+
+}
+
+static void zm_vprintb(zm_Print *out, int len, const char *fmt, va_list args)
+{
+	vsprintf(out->buffer.data + out->buffer.used, fmt, args);
+	out->buffer.used += len;
+}
+
+static void zm_printIndent(zm_Print *out)
+{
+	int i;
+
+	for (i = 0; i < out->indent; i++)
+		fprintf(out->file, " ");
+
+	if (zm_havePrintBuffer(out, out->indent)) {
+		char *b = out->buffer.data + out->buffer.used;
+
+		for (i = 0; i < out->indent; i++)
+			sprintf(b++, " ");
+
+		out->buffer.used += out->indent;
+	}
+
+}
+
+void zm_print(zm_Print *out, const char *fmt, ...)
+{
+	va_list args;
+	int len;
+
+	va_start(args, fmt);
+	len = zm_vprintf(out, fmt, args);
+	va_end(args);
+
+	if (zm_havePrintBuffer(out, len)) {
+		va_start(args, fmt);
+		zm_vprintb(out, len, fmt, args);
+		va_end(args);
+	}
+}
+
+
+/* indent print */
+void zm_iprint(zm_Print *out, const char *fmt, ...)
+{
+	va_list args;
+	int len;
+
+	zm_printIndent(out);
+
+	va_start(args, fmt);
+	len = zm_vprintf(out, fmt, args);
+	va_end(args);
+
+	if (zm_havePrintBuffer(out, len)) {
+		va_start(args, fmt);
+		zm_vprintb(out, len, fmt, args);
+		va_end(args);
+	}
+}
+
+
 void zm_initPrint(zm_Print *p, FILE *stream, int indent, int buf)
 {
 	p->file = stream;
@@ -237,134 +350,6 @@ void zm_initPrint(zm_Print *p, FILE *stream, int indent, int buf)
 	}
 }
 
-char* zm_popPrintBuffer(zm_Print *out, size_t *size)
-{
-	char* b = out->buffer.data;
-	if (size)
-		*size = out->buffer.size;
-	out->buffer.data = NULL;
-	return b;
-}
-
-
-void zm_removePrintBuffer(zm_Print *out)
-{
-	zm_nfree(char, out->buffer.size, out->buffer.data);
-	out->buffer.data = NULL;
-}
-
-static int zm_havePrintBuffer(zm_Print *out, int len)
-{
-	if (!out->buffer.data)
-		return false;
-
-	if (len < 0) {
-		zm_removePrintBuffer(out);
-		return false;
-	}
-
-	if (out->buffer.used + len >= out->buffer.size) {
-		void *ptr = (void*)out->buffer.data;
-		size_t size = out->buffer.used + len + 512;
-
-		ptr = zm_mrealloc(ptr, out->buffer.size, false);
-
-		if (!ptr) {
-			zm_removePrintBuffer(out);
-			return false;
-		}
-
-		out->buffer.size = size;
-		out->buffer.data = (char*)ptr;
-	}
-
-	return true;
-}
-
-
-/* indent print */
-void zm_iprint(zm_Print *out, const char *fmt, ...)
-{
-	va_list args;
-	int len = out->indent;
-	char *b;
-	int i = 0;
-
-	for (i = 0; i < out->indent; i++)
-		fprintf(out->file, " ");
-
-	va_start(args, fmt);
-	len += vfprintf(out->file, fmt, args);
-	va_end(args);
-
-	fflush(out->file);
-
-	if (!zm_havePrintBuffer(out, len))
-		return;
-
-	b = out->buffer.data + out->buffer.used;
-
-
-	for (i = 0; i < out->indent; i++) {
-		sprintf(b, " ");
-		b++;
-	}
-
-	va_start(args, fmt);
-	vsprintf(b, fmt, args);
-	va_end(args);
-
-	out->buffer.used += len;
-}
-
-
-void zm_print(zm_Print *out, const char *fmt, ...)
-{
-	va_list args;
-	int len;
-
-	va_start(args, fmt);
-	len = vfprintf(out->file, fmt, args);
-	va_end(args);
-
-	fflush(out->file);
-
-	if (!zm_havePrintBuffer(out, len))
-		return;
-
-
-	va_start(args, fmt);
-	vsprintf(out->buffer.data + out->buffer.used, fmt, args);
-	va_end(args);
-	out->buffer.used += len;
-}
-
-
-static int zm_vprint2(zm_Print *out, int len, const char *fmt, va_list args)
-{
-	if (len < 0) {
-		len = vfprintf(out->file, fmt, args);
-
-		fflush(out->file);
-
-		return len;
-
-	} else {
-		char *data;
-
-		if (!zm_havePrintBuffer(out, len))
-			return 0;
-
-		data = out->buffer.data + out->buffer.used;
-
-		vsprintf(data, fmt, args);
-
-		out->buffer.used += len;
-
-		return len;
-	}
-}
-
 void zm_setIndent(zm_Print *out, int indent)
 {
 	out->indent = indent;
@@ -375,9 +360,24 @@ void zm_addIndent(zm_Print *out, int indent)
 	out->indent += indent;
 }
 
-/*---------------------------------------------------------------------------
+char* zm_popPrintBuffer(zm_Print *out, size_t *size)
+{
+	char* b = out->buffer.data;
+	if (size)
+		*size = out->buffer.size;
+	out->buffer.data = NULL;
+	return b;
+}
+
+void zm_removePrintBuffer(zm_Print *out)
+{
+	zm_nfree(char, out->buffer.size, out->buffer.data);
+	out->buffer.data = NULL;
+}
+
+/* ----------------------------------------------------------------------------
  *  MULTI-THREAD SUPPORT
- *  -----------------------------------------------------------------------*/
+ * --------------------------------------------------------------------------*/
 
 
 
@@ -410,9 +410,9 @@ void zm_setThreadLock(zm_tlock_cb cb, void* data)
 
 
 
-/*---------------------------------------------------------------------------
+/* ----------------------------------------------------------------------------
  *  ERROR  REPORTING
- *  -----------------------------------------------------------------------*/
+ * --------------------------------------------------------------------------*/
 
 
 void zm_printVM(zm_Print *, zm_VM *);
@@ -612,16 +612,18 @@ void zm_fatalDo(zm_kfatal_t kind, const char *ecode, zm_VM *vm,
 
 		/*** print error message ***/
 		va_start(args, fmt);
-		len = zm_vprint2(&out, -1, fmt, args);
+		len = zm_vprintf(&out, fmt, args);
 		va_end(args);
 
 		/*** print error message in string buffer ***/
-		va_start(args, fmt);
-		zm_vprint2(&out, len, fmt, args);
-		va_end(args);
+		if (zm_havePrintBuffer(&out, len)) {
+			va_start(args, fmt);
+			zm_vprintb(&out, len, fmt, args);
+			va_end(args);
 
-		if (zmg_err.at.fatalcb)
-			errorstr = zm_popPrintBuffer(&out, &errorsize);
+			if (zmg_err.at.fatalcb)
+				errorstr = zm_popPrintBuffer(&out, &errorsize);
+		}
 
 		zm_fatalPrintErrorInfo(&out, vm, kind);
 
@@ -694,9 +696,9 @@ void zm_fatalUndefState(zm_VM *vm, const char *filename, int nline)
 
 
 
-/*---------------------------------------------------------------------------
+/* ----------------------------------------------------------------------------
  *  STATE QUEUE
- *  -----------------------------------------------------------------------*/
+ * --------------------------------------------------------------------------*/
 
 
 int zm_queueIsntEmpty(zm_StateQueue *queue)
@@ -819,9 +821,9 @@ static void zm_queueTreeAdd(zm_StateQueue *q, zm_State *s)
 
 
 
-/*---------------------------------------------------------------------------
+/* ----------------------------------------------------------------------------
  *  PRINT VM STRUCTURE FUNCTIONS
- *  -----------------------------------------------------------------------*/
+ * --------------------------------------------------------------------------*/
 
 
 
@@ -1856,9 +1858,9 @@ void zm_printError(zm_Print *out, zm_Exception *e, int trace)
 		zm_printErrorTrace(out, e);
 }
 
-/*---------------------------------------------------------------------------
+/* ----------------------------------------------------------------------------
  *  MHW - MACHINE WORKER "HASH"
- *  -----------------------------------------------------------------------*/
+ * --------------------------------------------------------------------------*/
 
 static void zm_initMachine(zm_Machine *machine)
 {
@@ -1922,9 +1924,9 @@ static zm_Worker* zm_mhwGet(zm_VM *vm, zm_Machine *machine)
 }
 
 
-/*---------------------------------------------------------------------------
+/* ----------------------------------------------------------------------------
  *  STATE CURSOR
- *  -----------------------------------------------------------------------*/
+ * --------------------------------------------------------------------------*/
 
 
 static void zm_stateRewind(zm_Worker *worker, zm_State *s)
@@ -1965,9 +1967,9 @@ static void zm_stateUnlink(zm_VM *vm, zm_Worker *worker)
 
 
 
-/*---------------------------------------------------------------------------
+/* ----------------------------------------------------------------------------
  *  RESUME - SUSPEND STATE
- *  -----------------------------------------------------------------------*/
+ * --------------------------------------------------------------------------*/
 
 static void zm_setStateArgument(zm_State *s, void *argument)
 {
@@ -2389,9 +2391,9 @@ static void zm_removeStateFromSiblings(zm_VM *vm, zm_State *s)
 
 
 
-/*---------------------------------------------------------------------------
+/* ----------------------------------------------------------------------------
  *  TERM / ABORT / EXCEPTION
- *  -----------------------------------------------------------------------*/
+ * --------------------------------------------------------------------------*/
 
 
 static void zm_unbindEvent(zm_VM* vm, zm_State *s, void* argument, int scope);
@@ -3801,9 +3803,9 @@ zm_Trace* zm_getTraceback(zm_Exception *e)
 
 
 
-/*---------------------------------------------------------------------------
+/* ----------------------------------------------------------------------------
  *  EVENT BIND/UNBIND/TRIGGER
- *  -----------------------------------------------------------------------*/
+ * --------------------------------------------------------------------------*/
 
 
 
@@ -4043,9 +4045,9 @@ size_t zm_trigger(zm_VM *vm, zm_Event *event, void *argument)
 }
 
 
-/*---------------------------------------------------------------------------
+/* ----------------------------------------------------------------------------
  *  WORKER COSTRUCTOR
- *  -----------------------------------------------------------------------*/
+ * --------------------------------------------------------------------------*/
 
 static zm_Worker* zm_newWorker(zm_VM *vm, zm_Machine *machine)
 {
@@ -4082,9 +4084,9 @@ static void zm_freeWorker(zm_VM* vm, zm_Worker *w)
 
 
 
-/*---------------------------------------------------------------------------
+/* ----------------------------------------------------------------------------
  *  NEW TASK/SUBTASK/EVENT
- *  -----------------------------------------------------------------------*/
+ * --------------------------------------------------------------------------*/
 
 
 
@@ -4349,9 +4351,9 @@ void zm_freeEvent(zm_VM *vm, zm_Event *event)
 
 
 
-/*---------------------------------------------------------------------------
+/* ----------------------------------------------------------------------------
  *  ACTIVE - DEACTIVE TASK/SUBTASK/EVENT
- *  -----------------------------------------------------------------------*/
+ * --------------------------------------------------------------------------*/
 
 
 static zm_yield_t zm_unraiseSSUB(zm_VM* vm, zm_State *s, void *argument,
@@ -4521,9 +4523,9 @@ zm_yield_t izmEVENT(zm_VM* vm, zm_Event *e, const char *filename, int nline)
 
 
 
-/*---------------------------------------------------------------------------
+/* ----------------------------------------------------------------------------
  *  VM COSTRUCTOR
- *  -----------------------------------------------------------------------*/
+ * --------------------------------------------------------------------------*/
 
 zm_VM* zm_newVM(const char *name)
 {
@@ -4637,9 +4639,9 @@ void zm_freeVM(zm_VM* vm)
 }
 
 
-/*---------------------------------------------------------------------------
+/* ----------------------------------------------------------------------------
  *  PROCESS STATE - RUN TASK
- *  -----------------------------------------------------------------------*/
+ * --------------------------------------------------------------------------*/
 
 static void zm_checkInnerYield(zm_VM *vm, zm_State *state, zm_Yield result)
 {
@@ -5200,9 +5202,9 @@ void zm_setProcessStateCallback(zm_VM *vm, zm_process_cb p)
 
 
 
-/*---------------------------------------------------------------------------
+/* ----------------------------------------------------------------------------
  *  VM GO
- *  -----------------------------------------------------------------------*/
+ * --------------------------------------------------------------------------*/
 
 
 
