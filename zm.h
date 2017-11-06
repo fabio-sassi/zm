@@ -134,17 +134,16 @@ enum { /* * yield-command * */
 
 
 
-/* tmode */
 enum {
-	ZM_TMODE_NORMAL = 0,
+	ZM_PMODE_NORMAL = 0,
 
-	ZM_TMODE_CLOSE,
+	ZM_PMODE_CLOSE,
 
-	ZM_TMODE_END,
+	ZM_PMODE_END,
 
-	ZM_TMODE_OFF,
+	ZM_PMODE_OFF,
 	
-	ZM_TMODE_ASYNCIMPLODE
+	ZM_PMODE_ASYNCIMPLODE
 };
 
 
@@ -284,13 +283,8 @@ struct zm_State_ {
 		zm_State *prev;
 	} siblings;
 
-	/* State */
 	zm_ResumeState on;
-	uint8_t tmode;
-
-	#ifdef ZM_DEBUG_MACHINENAME
-		const char* debugmachinename;
-	#endif
+	uint8_t pmode;
 
 	void *data;
 	void *rearg; /* resume arguments */
@@ -298,6 +292,11 @@ struct zm_State_ {
 	zm_State *subtasks;
 	zm_Exception *exception;
 	zm_State *next;
+
+#ifdef ZM_DEBUG_MACHINENAME
+		const char* debugmachinename;
+	#endif
+
 
 	struct {
 		const char *filename;
@@ -483,7 +482,7 @@ struct zm_VM_ {
 		int len;
 	} mhw;
 
-	/* active workers pointer are stored in a ring-linked-list*/
+	/* active workers pointer are stored in a ring linked list*/
 	zm_Worker *workercursor;
 
 	struct {
@@ -491,7 +490,7 @@ struct zm_VM_ {
 		zm_Worker *worker;
 		int fixedworker;
 		int suspendop;
-	} currentsession;
+	} session;
 
 	const char *vname;
 
@@ -568,11 +567,10 @@ typedef void (*zm_tlock_cb)(void *data, int lock);
 #define zm_disableFlag(s, FLAG)   (s)->flag &= (0xFF ^ FLAG)
 
 
-#define zm_getCurrentState(vm) ((vm)->currentsession.state)
-#define zm_getCurrentWorker(vm) ((vm)->currentsession.worker)
-#define zm_getCurrentMachine(vm) ((vm)->currentsession.worker->machine)
-#define zm_getCurrentMachineName(vm)                                         \
-        ((vm)->currentsession.worker->machine->name)
+#define zm_getCurrentState(vm) ((vm)->session.state)
+#define zm_getCurrentWorker(vm) ((vm)->session.worker)
+#define zm_getCurrentMachine(vm) ((vm)->session.worker->machine)
+#define zm_getCurrentMachineName(vm) ((vm)->session.worker->machine->name)
 
 #define zm_hasFlag(s, FLAG)   ((s)->flag & FLAG)
 #define zm_hasntFlag(s, FLAG)   (((s)->flag ^ FLAG) & FLAG)
@@ -928,8 +926,9 @@ void zm_setThreadLock(zm_tlock_cb cb, void* data);
 
 /* process */
 #define zm_break(vm) (vm)->pause = true
+#define zm_mGo zm_goMachine
+int zm_goMachine(zm_VM* vm, zm_Machine* m, unsigned int ncycle);
 int zm_go(zm_VM* vm, unsigned int ncycle);
-int zm_mGo(zm_VM* vm, zm_Machine* m, unsigned int ncycle);
 
 
 

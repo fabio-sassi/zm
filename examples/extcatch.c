@@ -67,7 +67,7 @@ void go(zm_VM *vm)
 		status = zm_go(vm, 100);
 		switch(status) {
 		case ZM_RUN_EXCEPTION: {
-			out("~~~ zm_go: CATCH EXCEPTION");
+			out("zm_go: CATCH EXCEPTION");
 			zm_Exception *e = zm_ucatch(vm);
 			zm_printError(NULL, e, true);
 			zm_freeUncaughtError(vm, e);
@@ -75,12 +75,11 @@ void go(zm_VM *vm)
 		}
 
 		case ZM_RUN_AGAIN:
-			out("~~~ zm_go: RUN AGAIN");
+			out("zm_go: RUN AGAIN");
 			break;
 
 		case ZM_RUN_IDLE:
-			out("~~~ zm_go: IDLE");
-			//zm_printVM(NULL, vm);
+			out("zm_go: IDLE");
 			break;
 		}
 	} while(status);

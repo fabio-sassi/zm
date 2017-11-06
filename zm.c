@@ -420,7 +420,7 @@ void zm_printState(zm_Print *, zm_State *);
 static void zm_printHeaderVM(zm_Print *, zm_VM *);
 static void zm_printErrorHead(zm_Print*, zm_Exception*, int);
 static void zm_printErrorTrace(zm_Print *out, zm_Exception *e);
-static const char* zm_getMachineOpName(zm_State *s, int compact);
+static const char* zm_getModeName(zm_State *s, int compact);
 
 
 struct {
@@ -531,8 +531,8 @@ static void zm_fatalPrintErrorInfo(zm_Print *out, zm_VM *vm, zm_kfatal_t kind)
 		zm_print(out, "\tzmstate: resume=%d iter=%d catch=%d\n",
 		         state->on.resume, state->on.iter, state->on.c4tch);
 
-		zm_print(out, "\tzmstate: tmode=%s\n",
-		         zm_getMachineOpName(state, false));
+		zm_print(out, "\tzmstate: pmode=%s\n",
+		         zm_getModeName(state, false));
 
 	}
 
@@ -1163,23 +1163,23 @@ static void zm_printFlags(zm_Print* out, zm_State *s, int compact)
 
 }
 
-static const char* zm_getMachineOpName(zm_State *s, int compact)
+static const char* zm_getModeName(zm_State *s, int compact)
 {
-	switch (s->tmode) {
-	case ZM_TMODE_NORMAL:
-		return (compact) ? "Onrm" : "ZM_TMODE_NORMAL";
+	switch (s->pmode) {
+	case ZM_PMODE_NORMAL:
+		return (compact) ? "Onrm" : "ZM_PMODE_NORMAL";
 
-	case ZM_TMODE_END:
-		return (compact) ? "OEND" : "ZM_TMODE_END";
+	case ZM_PMODE_END:
+		return (compact) ? "OEND" : "ZM_PMODE_END";
 
-	case ZM_TMODE_CLOSE:
-		return (compact) ? "OCLO" : "ZM_TMODE_CLOSE";
+	case ZM_PMODE_CLOSE:
+		return (compact) ? "OCLO" : "ZM_PMODE_CLOSE";
 
-	case ZM_TMODE_OFF:
-		return (compact) ? "ONUL" : "ZM_TMODE_OFF";
+	case ZM_PMODE_OFF:
+		return (compact) ? "ONUL" : "ZM_PMODE_OFF";
 
-	case ZM_TMODE_ASYNCIMPLODE:
-		return (compact) ? "OIMP" : "ZM_TMODE_ASYNCIMPLODE";
+	case ZM_PMODE_ASYNCIMPLODE:
+		return (compact) ? "OIMP" : "ZM_PMODE_ASYNCIMPLODE";
 
 	default:
 		return (compact) ? "O???" : "ZM_MACHINEOP_???????";
@@ -1211,8 +1211,8 @@ void zm_printStateCompact(zm_Print *out, zm_State *s)
 		zm_print(out, "ncb ");
 	}
 
-	if (s->tmode != ZM_TMODE_NORMAL)
-		zm_print(out, "%s ", zm_getMachineOpName(s, true));
+	if (s->pmode != ZM_PMODE_NORMAL)
+		zm_print(out, "%s ", zm_getModeName(s, true));
 
 	if (s->exception)
 		zm_print(out, "!%lx", s->exception);
@@ -1254,8 +1254,8 @@ void zm_printState(zm_Print *out, zm_State *s)
 	          s->on.resume, s->on.iter, s->on.c4tch);
 
 
-	if (s->tmode != ZM_TMODE_NORMAL)
-		zm_iprint(out, "tmode: %s\n", zm_getMachineOpName(s, false));
+	if (s->pmode != ZM_PMODE_NORMAL)
+		zm_iprint(out, "pmode: %s\n", zm_getModeName(s, false));
 
 	#ifdef ZM_DEBUG_MACHINENAME
 		zm_iprint(out, "machine: %s\n", s->debugmachinename);
@@ -1359,8 +1359,8 @@ static void zm_printHeaderVM(zm_Print *out, zm_VM *vm)
 	zm_iprint(out, "worker count: %d\n", vm->nworker);
 
 	zm_iprint(out, "plock: %d\n", vm->plock);
-	zm_iprint(out, "currentsession.fixedworker: %d\n",
-	          vm->currentsession.fixedworker);
+	zm_iprint(out, "session.fixedworker: %d\n",
+	          vm->session.fixedworker);
 
 	if (vm->nworker) {
 		zm_iprint(out, "workercursor: %s-%lx\n",
@@ -1927,29 +1927,29 @@ static zm_Worker* zm_mhwGet(zm_VM *vm, zm_Machine *machine)
  *  -----------------------------------------------------------------------*/
 
 
-static void zm_scursInit(zm_Worker *worker, zm_State *s)
+static void zm_stateRewind(zm_Worker *worker, zm_State *s)
 {
 	worker->states.current = worker->states.first = s;
 	worker->states.previous = NULL;
 	worker->nstate = 1;
 }
 
-/* move states cursor #NAV_STATES */
-static void zm_scursMove(zm_Worker *worker)
+/* move states cursor */
+static void zm_stateNext(zm_Worker *worker)
 {
 	worker->states.previous = worker->states.current;
 	worker->states.current = worker->states.current->next;
 }
 
-static void zm_scursRemove(zm_VM *vm, zm_Worker *worker)
+static void zm_stateUnlink(zm_VM *vm, zm_Worker *worker)
 {
-	if (++vm->currentsession.suspendop > 1) {
+	if (++vm->session.suspendop > 1) {
 		zm_fatalInit();
 		zm_fatalDo(ZM_FATAL_UN, "SCURS.RM", vm,
 		           "more than one suspend operation in the "
 		           "same session");
 	}
-	/* move states cursor #NAV_STATES */
+	/* move states cursor */
 	if (worker->states.previous) {
 		/* unlink current preserve previous
 		   (states.previous = unchanged) */
@@ -1976,7 +1976,7 @@ static void zm_setStateArgument(zm_State *s, void *argument)
 
 void* izmSetData(zm_VM *vm, void *data)
 {
-	vm->currentsession.state->data = data;
+	vm->session.state->data = data;
 	return data;
 }
 
@@ -2046,8 +2046,6 @@ static int zm_haveSameContext(zm_State *s1, zm_State *s2)
 
 static void zm_addWorker(zm_VM *vm, zm_Worker *w)
 {
-	/* #NAV_WORKERS*/
-
 	ZM_D("zm_addWorker [%lx] %s", w, w->machine->name);
 	if (vm->nworker == 0) {
 		vm->workercursor = w;
@@ -2065,12 +2063,13 @@ static void zm_addWorker(zm_VM *vm, zm_Worker *w)
 
 
 
-
+/*
+ * can be used only in not empty ring 
+ */
 static void zm_unlinkWorker(zm_VM *vm, zm_Worker *w)
 {
-	ZM_D("zm_unlinkWorker [%lx] %s", w, w->machine->name);
+	ZM_D("unlinkWorker [%lx] %s", w, w->machine->name);
 
-	/**** use only in not empty ring  #NAV_WORKERS*/
 	if (vm->nworker == 1) {
 		/* only one element*/
 		vm->workercursor = NULL;
@@ -2079,7 +2078,8 @@ static void zm_unlinkWorker(zm_VM *vm, zm_Worker *w)
 		w->next->prev = w->prev;
 
 		if (vm->workercursor == w) {
-			/* #BREAK_IN_SESSION_CURSOR_SYNC*/
+			/* This break the sync between workercursor and 
+			   current session worker*/
 			vm->workercursor = vm->workercursor->next;
 		}
 	}
@@ -2090,19 +2090,21 @@ static void zm_unlinkWorker(zm_VM *vm, zm_Worker *w)
 
 
 
+/*
+ * can be used only in not empty ring 
+ */
 static zm_Worker* zm_nextWorker(zm_VM *vm)
 {
-	/* #NAV_WORKERS #NAV_WORKERS2*/
-	/* use only in not empty ring*/
 	vm->workercursor = vm->workercursor->next;
+
+	ZM_D("nextWorker: %s\n", vm->workercursor->machine->name);
 
 	return vm->workercursor;
 }
 
 /**
- * NOTE: can be used only if worker->states.current is running
- * because ->next must point to a state (and not store a worker or an
- * evenbinder as in waiting)
+ * can be used only if worker->states.current is running because state->next 
+ * must point to a state (and not a worker or an evenbinder)
  */
 static void zm_rewindWorkerStates(zm_VM *vm, zm_Worker* worker)
 {
@@ -2172,16 +2174,8 @@ static void zm_resumeState(zm_VM *vm, zm_State *s)
 
 	/**** Add state to worker ***  */
 
-	/* #NAV_STATES #NAV_WORKERS*/
-
 	if (worker->nstate == 0) {
-		#if 0
-		worker->states.current = worker->states.first = s;
-		worker->states.previous = NULL;
-		worker->nstate = 1;
-		#endif
-
-		zm_scursInit(worker, s);
+		zm_stateRewind(worker, s);
 
 		s->next = NULL;
 
@@ -2321,19 +2315,15 @@ static void zm_unlinkCurrentState(zm_VM* vm)
 {
 	zm_Worker *worker = zm_getCurrentWorker(vm);
 
-	/* NOTE: #UNLINKSTATE_SESSION_CURSOR_SYNC
-	 *  In zm_stateGo: session worker can be different by workercursor
-	 *  but workercursor have no mean (for zm_stateGo) so session
-	 *  worker is the right worker
-	 *  In zm_go: session worker and workercursor are the same
-	 *  because the operation of unlink current state is the only
-	 *  that can broke this sync and can be done only one time in a session
-	 */
+	/* Session worker can be different by workercursor (getCurrentWorker
+	 * get the session one). In zm_mGo with a non null machine argument
+	 * (fixedworker = true) workercursor have no meaning. In zm_go 
+	 * workercursor and session worker are sync since an zm_unlinkWorker
+	 * is performed. */
 
+	ZM_D("unlinkCurrentState w = %s", worker->machine->name);
 
-	ZM_D("zm_unlinkCurrentState w = %s", worker->machine->name);
-
-	zm_scursRemove(vm, worker);
+	zm_stateUnlink(vm, worker);
 
 	worker->nstate--;
 
@@ -2348,10 +2338,9 @@ static void zm_unlinkCurrentState(zm_VM* vm)
 static void zm_suspendCurrentState(zm_VM* vm, zm_Yield ms, int waiting)
 {
 
-	/* see. #UNLINKSTATE_SESSION_CURSOR_SYNC*/
 	zm_State *state = zm_getCurrentState(vm);
 
-	ZM_D("zm_suspendCurrentState -- state : [ref %lx]", state);
+	ZM_D("suspendCurrentState -- state : [ref %lx]", state);
 
 	/* CHECK_OR_NOT */
 
@@ -2738,7 +2727,7 @@ static void zm_implosionUnlinkRunning(zm_VM* vm, zm_State *state,
 	li->running = state;
 
 	/* state cannot be currentstate (see ABRT.SELF, DEEPLCK.SELF)  */
-	state->tmode = ZM_TMODE_ASYNCIMPLODE;
+	state->pmode = ZM_PMODE_ASYNCIMPLODE;
 }
 
 
@@ -2762,7 +2751,7 @@ static void zm_setImplodeLock(zm_VM *vm, zm_LockAndImplode* li, zm_State *state)
 	/* #UNBIND_IMLOCK*/
 	state->flag |= ZM_STATEFLAG_IMPLOSIONLOCK;
 
-	state->tmode = ZM_TMODE_CLOSE;
+	state->pmode = ZM_PMODE_CLOSE;
 
 	if (!li)
 		return;
@@ -2793,10 +2782,10 @@ static void zm_setImplodeLock(zm_VM *vm, zm_LockAndImplode* li, zm_State *state)
 	if (zm_hasFlag(state, ZM_STATEFLAG_RUN)) {
 		/* #ASYNC_SERIALIZATION:
 		   async serialization is composed by 3 step:
-		   1) set a special tmode to the running state in implode lock
+		   1) set a special pmode to the running state in implode lock
 		   2) after serialization set a fake exception in running
 		      state that contain the state where implosion start
-		   3) the special tmode allow unlink the running state and
+		   3) the special pmode allow unlink the running state and
 		      resume the implosion start state
 
 		   step 1), 2) are sync to this operation while 3) is async
@@ -4157,7 +4146,7 @@ zm_State* izm_addTask(zm_VM *vm, zm_Machine *machine, void *data, bool subtask,
 	/**** Allocate State ****/
 	state = zm_alloc(zm_State);
 
-	state->tmode = ZM_TMODE_NORMAL; /* after resume will be RUN */
+	state->pmode = ZM_PMODE_NORMAL; /* after resume will be RUN */
 	state->flag = flag;
 
 	#ifdef ZM_DEBUG_MACHINENAME
@@ -4234,8 +4223,8 @@ static int zm_requestFreeState(zm_VM *vm, zm_State *state, const char* refname)
 		           "that is just marked to be free");
 	}
 
-	if (state->tmode == ZM_TMODE_OFF) {
-		/*** this tmode is set by ZM_TMODE_END*/
+	if (state->pmode == ZM_PMODE_OFF) {
+		/*** this pmode is set by ZM_PMODE_END*/
 		/*** then is possible to free state in a sync way*/
 		zm_free(zm_State, state);
 		return true;
@@ -4249,7 +4238,7 @@ static int zm_requestFreeState(zm_VM *vm, zm_State *state, const char* refname)
 	}
 
 	/* if ZM_STATEFLAG_IMPLOSIONLOCK the state will be closed but
-	 * is not just closed because tmode != ZM_TMODE_OFF
+	 * is not just closed because pmode != ZM_PMODE_OFF
 	 * ==> set autofree flag to perform an async free */
 	zm_enableFlag(state, ZM_STATEFLAG_AUTOFREE);
 
@@ -4559,10 +4548,10 @@ zm_VM* zm_newVM(const char *name)
 	zm_mhwInit(vm);
 
 	vm->workercursor = NULL;
-	vm->currentsession.state = NULL;
-	vm->currentsession.worker = NULL;
-	vm->currentsession.fixedworker = false;
-	vm->currentsession.suspendop = 0;
+	vm->session.state = NULL;
+	vm->session.worker = NULL;
+	vm->session.fixedworker = false;
+	vm->session.suspendop = 0;
 
 	vm->vname = name;
 	vm->uncaught = NULL;
@@ -4732,10 +4721,10 @@ static void zm_checkParentYield(zm_VM *vm, zm_State *state, zm_Yield result,
 
 static void zm_processUnexpected(zm_VM *vm, zm_State *state, zm_Yield result)
 {
-	const char *op = zm_getMachineOpName(state, false);
+	const char *op = zm_getModeName(state, false);
 	zm_fatalInit();
 	zm_fatalDo(ZM_FATAL_UNP, "WCMOP.U", vm,
-		   "Unknow combination of yield cmd = %s and tmode = %s",
+		   "Unknow combination of yield cmd = %s and pmode = %s",
 		   zm_getYieldCommandName(result.cmd), op);
 }
 
@@ -4863,7 +4852,7 @@ static int zm_normYield(zm_VM *vm, zm_Worker *worker, zm_State *state,
 	switch( cmd ) {
 
 	case ZM_TASK_CONTINUE:
-		ZM_D("ZM_TMODE_NORMAL | ZM_TASK_CONTINUE");
+		ZM_D("ZM_PMODE_NORMAL | ZM_TASK_CONTINUE");
 
 		zm_checkInnerYield(vm, state, result);
 
@@ -4877,7 +4866,7 @@ static int zm_normYield(zm_VM *vm, zm_Worker *worker, zm_State *state,
 
 		/* #CONTINUE_EXCEPT*/
 
-		ZM_D("ZM_TMODE_NORMAL | ZM_TASK_RAISE_CONTINUE");
+		ZM_D("ZM_PMODE_NORMAL | ZM_TASK_RAISE_CONTINUE");
 
 		lastbeforecatch = zm_getContinueBegin(vm, state, e);
 
@@ -4918,7 +4907,7 @@ static int zm_normYield(zm_VM *vm, zm_Worker *worker, zm_State *state,
 	case ZM_TASK_RAISE_ERROR_EXCEPTION: {
 		zm_Exception *e = state->exception;
 
-		ZM_D("ZM_TMODE_NORMAL | ZM_TASK_RAISE_ERROR");
+		ZM_D("ZM_PMODE_NORMAL | ZM_TASK_RAISE_ERROR");
 
 		/* remove reference from raise state */
 		state->exception = NULL;
@@ -4944,7 +4933,7 @@ static int zm_normYield(zm_VM *vm, zm_Worker *worker, zm_State *state,
 
 	/** distructor of the task  */
 	case ZM_TASK_TERM:
-		ZM_D("ZM_TMODE_NORMAL | ZM_TASK_TERM");
+		ZM_D("ZM_PMODE_NORMAL | ZM_TASK_TERM");
 		/* CHECK_OR_NOT */
 
 		zm_suspendCurrentState(vm, result, true);
@@ -4965,7 +4954,7 @@ static int zm_normYield(zm_VM *vm, zm_Worker *worker, zm_State *state,
 
 	/** Task Suspend - e.g. yield TO(foo) */
 	case ZM_TASK_SUSPEND:
-		ZM_D("ZM_TMODE_NORMAL | ZM_TASK_SUSPEND");
+		ZM_D("ZM_PMODE_NORMAL | ZM_TASK_SUSPEND");
 
 		if (zm_isTask(state)) {
 			zm_suspendCurrentState(vm, result, false);
@@ -4974,7 +4963,7 @@ static int zm_normYield(zm_VM *vm, zm_Worker *worker, zm_State *state,
 
 	/** Task suspend (iter) - e.g. yield zmCALLER */
 	case ZM_TASK_SUSPEND_AND_RESUME_CALLER:
-		ZM_D("ZM_TMODE_NORMAL | TASK_SUSPEND_AND_RES_CALLER");
+		ZM_D("ZM_PMODE_NORMAL | TASK_SUSPEND_AND_RES_CALLER");
 
 		/* CHECK_OR_NOT */
 		zm_checkParentYield(vm, state, result,(cmd == ZM_TASK_SUSPEND));
@@ -4989,7 +4978,7 @@ static int zm_normYield(zm_VM *vm, zm_Worker *worker, zm_State *state,
 
 	/** Task suspend waiting subtask - e.g. yield SUB(foo) */
 	case ZM_TASK_SUSPEND_WAITING_SUBTASK:
-		ZM_D("ZM_TMODE_NORMAL | ZM_TASK_SUSPEND_WAIT_SUB");
+		ZM_D("ZM_PMODE_NORMAL | ZM_TASK_SUSPEND_WAIT_SUB");
 		/* suspend with waiting = true (ZM_STATEFLAG_WAITING) */
 		zm_suspendCurrentState(vm, result, true);
 
@@ -5009,7 +4998,7 @@ static int zm_normYield(zm_VM *vm, zm_Worker *worker, zm_State *state,
 		 * suspendCurrentState */
 		state->next = (zm_State*)evb->statenext;
 
-		ZM_D("ZM_TMODE_NORMAL | TASK_BUSY_WAITING_EVENT");
+		ZM_D("ZM_PMODE_NORMAL | TASK_BUSY_WAITING_EVENT");
 
 		/* Temporary disable event flag to allow debug print in
 		   suspend current */
@@ -5047,17 +5036,17 @@ static int zm_closeYield(zm_VM *vm, zm_Worker *worker, zm_State *state,
 	switch( cmd ) {
 
 	case ZM_TASK_END:
-		ZM_D("ZM_TMODE_CLOSE | ZM_TASK_END");
+		ZM_D("ZM_PMODE_CLOSE | ZM_TASK_END");
 		/*  CHECK_OR_NOT */
 
 		if (zm_hasntFlag(state, ZM_STATEFLAG_IMPLOSIONLOCK)) {
 			zm_fatalInit();
 			zm_fatalDo(ZM_FATAL_UNP, "YEND.NLI", vm,
-			           "task not in close mode with tmode="
-			           "ZM_TMODE_CLOSE");
+			           "task not in close mode with pmode="
+			           "ZM_PMODE_CLOSE");
 		}
 
-		state->tmode = ZM_TMODE_END;
+		state->pmode = ZM_PMODE_END;
 
 		return 0;
 
@@ -5076,27 +5065,27 @@ static int zm_closeYield(zm_VM *vm, zm_Worker *worker, zm_State *state,
 
 static int zm_processState(zm_VM *vm, zm_Worker *worker, zm_State *state)
 {
-	ZM_D("process_state[0] - state = [ref %lx]  tmode = %d", state,
-	     state->tmode);
+	ZM_D("process_state[0] - state = [ref %lx]  pmode = %d", state,
+	     state->pmode);
 
-	switch(state->tmode) {
-	case ZM_TMODE_NORMAL:
-	case ZM_TMODE_CLOSE: {
+	switch(state->pmode) {
+	case ZM_PMODE_NORMAL:
+	case ZM_PMODE_CLOSE: {
 		/* RUN: Excute a step of machine */
 		zm_Yield y = zm_runTask(vm, worker, state);
 
-		if (state->tmode == ZM_TMODE_CLOSE) {
+		if (state->pmode == ZM_PMODE_CLOSE) {
 			return zm_closeYield(vm, worker, state, y);
 		}
 	
 		return zm_normYield(vm, worker, state, y);
 	}
 
-	case ZM_TMODE_END:
+	case ZM_PMODE_END:
 		/* Remove the state from list (should be invoked in
 		 * ZM_TERM when all user-resource as been free) */
 
-		ZM_D("ZM_TMODE_END:");
+		ZM_D("ZM_PMODE_END:");
 
 		if (zm_isSubTask(state)) {
 			/* resume parent (end mode) done before
@@ -5110,7 +5099,7 @@ static int zm_processState(zm_VM *vm, zm_Worker *worker, zm_State *state)
 
 		zm_unlinkCurrentState(vm);
 
-		state->tmode = ZM_TMODE_OFF;
+		state->pmode = ZM_PMODE_OFF;
 
 		ZM_D("CLOSE TASK: remove state from siblings ...");
 		zm_removeStateFromSiblings(vm, state);
@@ -5139,7 +5128,7 @@ static int zm_processState(zm_VM *vm, zm_Worker *worker, zm_State *state)
 			zm_fatalInit();
 			zm_fatalDo(ZM_FATAL_UNP, "PPS.EEN", vm,
 			           "exception still present in "
-			           "ZM_TMODE_END");
+			           "ZM_PMODE_END");
 		}
 
 		if (zm_hasFlag(state, ZM_STATEFLAG_AUTOFREE)) {
@@ -5151,7 +5140,7 @@ static int zm_processState(zm_VM *vm, zm_Worker *worker, zm_State *state)
 		return ZM_PROCESS_STATEUNLINKED;
 
 
-	case ZM_TMODE_ASYNCIMPLODE: {
+	case ZM_PMODE_ASYNCIMPLODE: {
 		/* this is a special for lock and implode
 		   #ASYNC_SERIALIZATION [step 3]*/
 		zm_State *imstart;
@@ -5161,11 +5150,11 @@ static int zm_processState(zm_VM *vm, zm_Worker *worker, zm_State *state)
 		y.iter = state->on.iter;
 		y.c4tch = state->on.c4tch;
 
-		ZM_D("ZM_TMODE_ASYNCIMPLODE");
+		ZM_D("ZM_PMODE_ASYNCIMPLODE");
 
 		imstart = zm_popAsyncImplosionStart(state);
 
-		state->tmode = ZM_TMODE_CLOSE;
+		state->pmode = ZM_PMODE_CLOSE;
 
 		/* All implosion task, except the imstart, must be in
 		 * waiting subtask (see #IMPLODE_WAITING_CHAIN)
@@ -5179,18 +5168,18 @@ static int zm_processState(zm_VM *vm, zm_Worker *worker, zm_State *state)
 		return ZM_PROCESS_STATEUNLINKED;
 	}
 
-	case ZM_TMODE_OFF:
+	case ZM_PMODE_OFF:
 		zm_fatalInit();
 		zm_fatalDo(ZM_FATAL_UNP, "PPS.NMTD", vm,
-		           "unexpected tmode in processState"
-		           "(tmode = ZM_TMODE_OFF)");
+		           "unexpected pmode in processState"
+		           "(pmode = ZM_PMODE_OFF)");
 		return 0;
 
 	default:
 		zm_fatalInit();
 		zm_fatalDo(ZM_FATAL_UNP, "PPS.UVMOP", vm,
-		           "unexpected tmode in processState (tmode = %d)",
-		           state->tmode);
+		           "unexpected pmode in processState (pmode = %d)",
+		           state->pmode);
 		return 0;
 	}
 }
@@ -5217,152 +5206,140 @@ void zm_setProcessStateCallback(zm_VM *vm, zm_process_cb p)
 
 
 
-static int zm_stateGo(zm_VM* vm, zm_Worker *worker, zm_State *state)
+static int zm_goState(zm_VM* vm, zm_Worker *worker, zm_State *state)
 {
-	int processresult, justmoved;
+	int processresult, unlink;
 
-	ZM_D("zm_stateGo - state: [ref %lx]", state);
+	ZM_D("stateGo: process state with worker = %s", worker->machine->name);
+	ZM_D("stateGo: process state [ref %lx] ", state);
 
-	vm->currentsession.state = state;
-	vm->currentsession.worker = worker;
-	vm->currentsession.suspendop = 0;
+	vm->session.state = state;
+	vm->session.worker = worker;
+	vm->session.suspendop = 0;
 
-	if (vm->prepost) {
+	if (vm->prepost)
 		vm->prepost(vm, worker->machine, state, 0);
-	}
 
-	ZM_D("zm_stateGo ~~~~ resume:%d", state->on.resume);
 	processresult = zm_processState(vm, worker, state);
 
-	if (vm->prepost) {
+	if (vm->prepost)
 		vm->prepost(vm, worker->machine, state, 1);
-	}
 
-	ZM_D("zm_stateGo - process state return %d", processresult);
+	ZM_D("stateGo - process state return %d", processresult);
 
+	/* update states and worker cursors */
 
-	/* update states and worker cursors:
-	 * when an unlinkcurrentstate is called during a session
-	 * worker->states cursor is just updated otherwise cursor
-	 * must be updated
-	 */
-	justmoved = (processresult & ZM_PROCESS_STATEUNLINKED);
+	unlink = (processresult & ZM_PROCESS_STATEUNLINKED);
 
-	if (!justmoved)
-		zm_scursMove(worker);
+	/* state unlink cause an implicit cursor move */
+	if (!unlink)
+		zm_stateNext(worker);
 
 	if (processresult & ZM_PROCESS_EXCEPTION)
 		return ZM_RUN_EXCEPTION;
-
-	if (justmoved)
-		if ((worker->nstate == 0) && (vm->currentsession.fixedworker))
-			return ZM_RUN_IDLE;
-
-
-	return ZM_RUN_AGAIN;
+	else if ((vm->session.fixedworker) && (worker->nstate == 0))
+		return ZM_RUN_IDLE;
+	else
+		return ZM_RUN_AGAIN;
 }
 
 
-
-
-int zm_mGo(zm_VM* vm, zm_Machine* machine, unsigned int ncycle)
+static zm_Worker* zm_goGetWorker(zm_VM* vm)
 {
-	zm_Worker* worker = vm->workercursor;
-	zm_State* state;
-	int onemachine = (machine != NULL);
-	int r;
+	zm_Worker *worker; 
 
-	ZM_D("GO - init: vm = %d - machine = %lx", vm, machine);
-
-	if (machine) {
-		worker = zm_mhwGet(vm, machine);
+	if (vm->session.fixedworker) {
+		worker = vm->session.worker;
 	} else {
-		if (worker == NULL)
-			return ZM_RUN_IDLE;
+		/* get current cursor worker */
+		if (!vm->workercursor)
+			return NULL;
+
+		worker = vm->workercursor;
 	}
 
-	vm->currentsession.worker = worker;
-	vm->currentsession.fixedworker = onemachine;
+
+	#ifdef ZM_CHECK_CONSISTENCY
+	if (worker->nstate < 0) {
+		zm_fatalInit();
+		zm_fatalDo(ZM_FATAL_UN, "WGO.WNS", vm,
+			   "zm_go: inconsistency error: "
+			   "worker->nstate = %d", worker->nstate);
+	}
+	#endif
+
+	/* check if there a least one state */
+	if (worker->nstate == 0) {
+		/* no more state in this worker */
+		ZM_D("zm_go: no more state in worker -> IDLE");
+		return NULL;
+	}
+	
+	return worker; 
+}
+
+static zm_State* zm_goGetState(zm_VM* vm, zm_Worker* worker)
+{
+	if (!worker->states.current) {
+		zm_rewindWorkerStates(vm, worker);
+
+		if ((!vm->session.fixedworker) && (vm->nworker > 1)) {
+			worker = zm_nextWorker(vm);
+			/* return null to check worker with goGetWorker */
+			return NULL;
+		}
+	}
+		
+	return worker->states.current;
+}
+
+int zm_goMachine(zm_VM* vm, zm_Machine* onemachine, unsigned int ncycle)
+{
+	zm_Worker* worker;
+	zm_State* state;
+	int r;
+
+	ZM_D("GO - init: vm = %d - machine = %lx", vm, onemachine);
+
+	if (onemachine) {
+		vm->session.worker = zm_mhwGet(vm, onemachine);
+		vm->session.fixedworker = true;
+	} else {
+		vm->session.fixedworker = false;
+	}
+
 
 	while(ncycle > 0) {
-		ZM_D("GO: ~********** STEP #%d **********~", ncycle);
+		ZM_D("GO - ********** STEP #%d **********", ncycle);
 
 		if (vm->pause) {
 			vm->pause = false;
 			return ZM_RUN_AGAIN | ZM_RUN_BREAK;
 		}
 
-		/* CLEAN THIS CODE FIXME */
-		/* CLEAN THIS CODE FIXME */
-		/* CLEAN THIS CODE FIXME */
+		worker = zm_goGetWorker(vm); 
 
-		if (!onemachine) {
-			/* get current cursor worker #NAV_WORKERS */
-			worker = vm->workercursor;
-
-			if (!worker) {
-				/* no worker in ring -> IDLE */
-				ZM_D("GO: no more worker -> IDLE");
-				return ZM_RUN_IDLE;
-			}
-		}
-
-		ZM_D("GO: checkpoint 2");
-
-		/* check if there a least one state */
-		if (worker->nstate == 0) {
-			/** no more state in this worker ****/
-			ZM_D("zm_go: no more state in worker -> IDLE");
+		if (!worker)
 			return ZM_RUN_IDLE;
-		} else if (worker->nstate < 0) {
-			zm_fatalInit();
-			zm_fatalDo(ZM_FATAL_UN, "WGO.WNS", vm,
-			           "zm_go: inconsistency error: "
-			           "worker->nstate = %d", worker->nstate);
-		}
 
-		ZM_D("GO: checkpoint 3");
+		state = zm_goGetState(vm, worker);
 
+		if (!state)
+			continue;
 
-		/* get next state (and in some condition next worker) */
-		if (worker->states.current == NULL) {
-			ZM_D("GO: 3.a %lx", worker);
-			/* rewind worker states */
-			zm_rewindWorkerStates(vm, worker);
-
-			ZM_D("GO: 3.b");
-			if ((!onemachine) && (vm->nworker > 1)) {
-				/* get next worker in ring #NAV_WORKERS */
-				worker = zm_nextWorker(vm);
-				ZM_D("GO: ~Next worker is: %s\n",
-				     worker->machine->name);
-				continue;
-			}
-		}
-
-		ZM_D("GO: checkpoint 4");
-		/**** process (exec) state ****/
-
-		state = worker->states.current;
-
-		ZM_D("GO: process state = %lx [%s%s]", state,
-		     (onemachine) ? " const " : "",
-		     worker->machine->name);
-
-		r = zm_stateGo(vm, worker, state);
+		r = zm_goState(vm, worker, state);
 
 		if (r != ZM_RUN_AGAIN)
 			return r;
 
-		ncycle -= worker->cyclestep;
-		ZM_D("GO: step end\n");
-
 		#if ZM_DEBUG_LEVEL >= 4
 		zm_printVM(NULL, vm);
 		#endif
+
+		ncycle -= worker->cyclestep;
 	}
 
-	ZM_D("GO[end]: *** ncylce = %d\n", ncycle);
+	ZM_D("GO - end (ncycle left %d)\n", ncycle);
 	return ZM_RUN_AGAIN;
 }
 
@@ -5371,7 +5348,7 @@ int zm_mGo(zm_VM* vm, zm_Machine* machine, unsigned int ncycle)
 
 int zm_go(zm_VM* vm, unsigned int ncycle)
 {
-	return zm_mGo(vm, NULL, ncycle);
+	return zm_goMachine(vm, NULL, ncycle);
 }
 
 

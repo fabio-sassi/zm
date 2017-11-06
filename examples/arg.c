@@ -25,10 +25,10 @@ int main()
 	zm_State *f = zm_newTasklet(vm , Foo, NULL);
 
 	zm_resume(vm, f, "Hello");
-	zm_go(vm , 5);
+	zm_go(vm, 5);
 
 	zm_resume(vm, f, "How are you?");
-	zm_go(vm , 5);
+	zm_go(vm, 5);
 
 	zm_closeVM(vm);
 	zm_go(vm, 100);
