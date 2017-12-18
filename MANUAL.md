@@ -52,16 +52,16 @@ a ZM task as:
 	
 		zmstate 1:
 			printf("step 1 - init\n");
-			yield 2; // yield to zmstate 2 
+			zmyield 2; // yield to zmstate 2 
 
 		zmstate 3:
 			printf("step 3\n");
-			yield zmSUSPEND | 2; // suspend and set resume 
+			zmyield zmSUSPEND | 2; // suspend and set resume 
 			                         // point to zmstate=2
 
 		zmstate 2:
 			printf("step 2\n");
-			yield 3
+			zmyield 3
 
 		ZMEND
 	}
@@ -111,7 +111,7 @@ the argument 2 as a resume point for next step.
 
 The same concept allow to deal with external yield (yield to other tasks):
 
-	yield zmTO(foo2task) | 4;
+	zmyield zmTO(foo2task) | 4;
 
 this is converted in:
 
@@ -135,7 +135,7 @@ greater than 0xFFFFFF.
 
 This allow to use them simultaneously, using *OR* operator, in a single yield:
 
-	yield TASK_SUSPEND | 4 | zmNEXT(5) | zmCATCH(7);
+	zmyield TASK_SUSPEND | 4 | zmNEXT(5) | zmCATCH(7);
 
 
 The involved endianess issue is worked around with endianess-independent  
@@ -288,14 +288,14 @@ can resume:
 	zm_resume(vm, task1, NULL); 
 	zm_resume(vm, task2, NULL); 
 	zm_resume(vm, task3, NULL); 
-	yield zmSUB(subtask, NULL) | 5
+	zmyield zmSUB(subtask, NULL) | 5
 ```
 
 ### Suspend a task:
 Yield to suspend for ptasks implies only a suspend while for a subtasks 
 mean also the automatically resume of the task that are waiting for it.
 
-	yield zmSUSPEND | 5;
+	zmyield zmSUSPEND | 5;
 
 
 ### Execution-context:
@@ -383,11 +383,6 @@ This zmstate can be used as a constructor.
 
 The library have a constant that can be used in place of 
 the numerical value: `ZM_INIT`.
-
-#### The last zmstate:
-
-Every task that receive a close command will be resume in a special
-zmstate used for deallocate resources: `ZM_TERM`.
 
 ### Local variables:
 
@@ -594,7 +589,7 @@ can also be written as:
 
 	ZMTASKDEF(foo2) ZMSTATES
 		zmstate 1: 
-			yield zmTERM; 
+			zmyield zmTERM; 
 	ZMEND
 
 
@@ -676,9 +671,9 @@ from *normal-mode* (default) to **closing-mode**.
 This is the list of command that send a *close* to a task:
 
 - `zm_abort(...)` 
-- `yield zmTERM` 
-- `yield zmCLOSE(...)`
-- `raise zmERROR(...)`
+- `zmyield zmTERM` 
+- `zmyield zmCLOSE(...)`
+- `zmraise zmERROR(...)`
 
 This commands affect not only the target task but also its subtask and
 recursively all relative *data-tree* branch. 
@@ -730,17 +725,37 @@ without any suspend) where no reference is needed.
 
 
 ### The task destructor:
-When a task go in **closing-mode** the task will resumed in `ZM_TERM` 
-zmstate.
 
-`ZM_TERM` is the special zmstate to perform all close operation 
-on task data (e.g. task data resource free) before yield to end.
+Every task that receive a close command will be resumed in a special
+zmstate used for deallocate user data resources: `ZM_TERM`.
 
-The only permitted yield in `ZM_TERM` is: 
+It is not mandatory to define this zmstate so may be omitted 
+if the task don't need to perform any operation before the
+task end. 
 
-	yield zmEND;
+This zmstate cannot be used in a direct yield:
 
-`zmEND` can be used only in closing-mode.
+		zmyield ZM_TERM; /* wrong: fatal error */
+		zmyield zmSUB(foo, NULL) | ZM_TERM; /* wrong: fatal error */
+
+but is automaticaly set as a resume point after a close operation 
+(e.g. `yield zmTERM`).
+
+In `ZM_TERM` the only permitted yield is: `yield zmEND`.
+
+#### Example:
+
+	zmstate ZM_INIT: {
+		int *array = malloc(sizeof(int) * 2);
+		zmData(array);
+		zmyield zmTERM;
+	}
+
+	zmstate ZM_TERM:
+		if (zmdata)
+			free(zmdata);
+
+		zmyield zmEND;
 
 
 ### Yield to task example:
@@ -760,11 +775,11 @@ to ptask `zmTO`:
 
 		zmstate 1:
 			printf("    task2 %s: init %s\n", suffix, arg);
-			yield zmTERM;
+			zmyield zmTERM;
 
 		zmstate ZM_TERM:
 			printf("    task2 %s: end\n", suffix);
-			yield zmEND;
+			zmyield zmEND;
 	ZMEND
 
 
@@ -778,7 +793,7 @@ to ptask `zmTO`:
 			 * When sb will yield to zmEND this task will be 
 			 * resumed (in zmstate 2)
 			 */
-			yield zmSUB(sb, "(sub)") | 2;
+			zmyield zmSUB(sb, "(sub)") | 2;
 		}
 		zmstate 2: {
 			zm_State *pt = zm_newTasklet(vm, task2, "as ptask");
@@ -787,12 +802,12 @@ to ptask `zmTO`:
 
 			/* This yield resume pt and simply suspend this task */
 
-			yield zmTO(pt, "(to)") | 3;
+			zmyield zmTO(pt, "(to)") | 3;
 		}
 
 		zmstate 3:
 			printf("task1: term\n");
-			yield zmTERM;
+			zmyield zmTERM;
 
 	ZMEND
 
@@ -987,11 +1002,11 @@ defining a zmstate as resume point.
 
 The reset point is defined with this syntax:
 
-	yield 4 | zmRESET(7)
+	zmyield 4 | zmRESET(7)
 
 To define a resent point in the raise itself use instead: 
 
-	raise zmERROR(0, "test", NULL) | 5;
+	zmraise zmERROR(0, "test", NULL) | 5;
 
 zmRESET cannot be applied to a ptask.
 
@@ -1044,14 +1059,14 @@ before catch are a suspended block.
 
 This block can be resumed using:
 
-	yield zmUNRAISE(sub1, NULL) | 5;
+	zmyield zmUNRAISE(sub1, NULL) | 5;
 
 This commands *don't resume* `sub1` but the state who raised the 
 continue exception.
 
 Instead of `zmUNRAISE` is possible also to use:
 
-	yield zmSSUB(sub1, NULL) | 5;
+	zmyield zmSSUB(sub1, NULL) | 5;
 
 `zmSSUB` act like `zmSUB` if sub1 is a suspended subtask or like `zmUNRAISE`
 if `sub1` is a continue-exception suspended block.

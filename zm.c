@@ -204,7 +204,7 @@ void zm_mfree(size_t size, void *ptr)
 }
 
 /* ----------------------------------------------------------------------------
- *  DEBUG UTILITY 
+ *  DEBUG UTILITY
  * --------------------------------------------------------------------------*/
 
 #if ZM_DEBUG_LEVEL >= 1
@@ -257,7 +257,7 @@ static int zm_havePrintBuffer(zm_Print *out, int len)
 			zm_removePrintBuffer(out);
 			return false;
 		}
-		
+
 		out->buffer.data = (char*)ptr;
 		out->buffer.size = size;
 	}
@@ -402,7 +402,7 @@ static void zm_lockOff()
 	zmg_mutex.lockcb(zmg_mutex.data, false);
 }
 
-void zm_setThreadLock(zm_tlock_cb cb, void* data)
+void zm_enableMT(zm_tlock_cb cb, void* data)
 {
 	zmg_mutex.lockcb = cb;
 	zmg_mutex.data = data;
@@ -5206,7 +5206,10 @@ void zm_setProcessStateCallback(zm_VM *vm, zm_process_cb p)
  *  VM GO
  * --------------------------------------------------------------------------*/
 
-
+void zm_break(zm_VM* vm)
+{
+	vm->pause = true;
+}
 
 static int zm_goState(zm_VM* vm, zm_Worker *worker, zm_State *state)
 {

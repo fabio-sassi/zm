@@ -910,10 +910,10 @@ void zm_freeVM(zm_VM* vm);
 void zm_setProcessStateCallback(zm_VM *vm, zm_process_cb p);
 
 /* multi thread support */
-void zm_setThreadLock(zm_tlock_cb cb, void* data);
+void zm_enableMT(zm_tlock_cb cb, void* data);
 
 /* process */
-#define zm_break(vm) (vm)->pause = true
+void zm_break(zm_VM* vm);
 #define zm_mGo zm_goMachine
 int zm_goMachine(zm_VM* vm, zm_Machine* m, unsigned int ncycle);
 int zm_go(zm_VM* vm, unsigned int ncycle);
