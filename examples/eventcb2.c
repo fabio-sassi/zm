@@ -90,9 +90,8 @@ ZMTASKDEF( mycoroutine )
 	ZMSTART
 
 	zmstate 1:
-		self = malloc(sizeof(TaskData));
+		zmdata = self = malloc(sizeof(TaskData));
 		self->id = counter++;
-		zmData(self);
 		printf("task %d: -init-\n", self->id);
 		zmyield zmEVENT(event) | 2 | zmUNBIND(3);
 

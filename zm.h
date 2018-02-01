@@ -136,7 +136,7 @@ enum {
 	ZM_PMODE_END,
 
 	ZM_PMODE_OFF,
-	
+
 	ZM_PMODE_ASYNCIMPLODE
 };
 
@@ -402,13 +402,17 @@ struct zm_Exception_ {
 
 /*
  * A machine is like a symbol in global scope that rappresent a task class.
- * This means that as a class, a machine, allow to instance the X task in
- * a particular zm_VM.
+ * As a class, a machine, allow to instance many task.  process is done
+ * in 3 step:
  *
- * class definition: When user define a task class of name X create a global
- *                   zm_Machine and X point to this machine.
- * class instance:   A machine instance in a vm is a worker (zm_Worker).
- * task instance:    A task instance (zm_State) is associated to a worker.
+ * class definition: ZMTASKDEF(X) define a zm_Machine and a pointer X to it
+ *                   to be used as class definition symbol.
+ * task instance:    zm_newTask(vm, X, ...) create, only at the first
+ *                   invocation with the class X, a zm_Worker associated to X.
+ *                   This is the reference of X inside a vm (zm_VM) and will
+ *                   be used in successive task instance procedure.
+ *                   zm_newTask return an instance task (zm_State) associated
+ *                   to the worker X and to vm.
  *
  * In a vm there is only one worker for each machine. An associative array
  * (mhw) inside vm allow to match a machine with relative zm_Worker.
@@ -418,7 +422,7 @@ struct zm_Exception_ {
 */
 typedef struct {
 	int id;
-	zm_yield_t (*fun)(zm_VM* zm, uint8_t zmop, void* zmdata, void *zmarg);
+	zm_yield_t (*fun)(zm_VM* zm, uint8_t zmop, void *zmarg);
 	const char* name;
 } zm_Machine;
 
@@ -605,15 +609,6 @@ typedef void (*zm_tlock_cb)(void *data, int lock);
 
 /* Inside Task API */
 
-#define zmResponse(r)                                                         \
-        izmResponse(vm, (r), __FILE__, __LINE__)
-
-#define zmData(d)                                                             \
-        izmSetData(vm, d)
-
-#define zmSetData(d)                                                          \
-        izmSetData(vm, d)
-
 #define zmCatch()                                                             \
         izmCatchException(vm, 0, "zmCatch", __FILE__, __LINE__)
 
@@ -696,21 +691,20 @@ typedef void (*zm_tlock_cb)(void *data, int lock);
 #define zmyield return zmyieldtrace(vm, __FILE__, __LINE__) |
 #define zmraise return 0 |
 #define zmstate case
-
+#define zmdata (zm_getCurrentState(vm)->data)
+#define zmresult (izmResult(vm, __FILE__, __LINE__)->rearg)
 
 /* Task def API*/
 #define ZMTASKDEF(x)                                                          \
-    zm_yield_t x ## __function__(zm_VM*, uint8_t zmop, void* zmdata,          \
-                                                       void* zmarg);          \
+    zm_yield_t x ## __function__(zm_VM*, uint8_t zmop, void* zmarg);          \
     zm_Machine x ## __byval__ = {-1, x ## __function__, #x};                  \
     zm_Machine* x = &x ## __byval__;                                          \
-    zm_yield_t (x ## __function__)(zm_VM* vm, uint8_t zmop, void* zmdata,     \
-                                                             void *zmarg)     \
-   {
+    zm_yield_t (x ## __function__)(zm_VM* vm, uint8_t zmop, void *zmarg)      \
+    {
 
 
 #define ZMTASKLN(base, x)                                                     \
-    zm_yield_t base ## __function__(zm_VM*, uint8_t, void*, void*);           \
+    zm_yield_t base ## __function__(zm_VM*, uint8_t, void*);           \
     zm_Machine x ## __byval__ = {-1, base ## __function__, #x};               \
     zm_Machine* x = &x ## __byval__                                           \
 
@@ -829,9 +823,7 @@ int zmyieldtrace(zm_VM* vm, const char *fn, int nl);
 
 /* inside task functions */
 
-void* izmSetData(zm_VM *vm, void *data);
-
-void izmResponse(zm_VM* vm, void* response, const char *filename, int nline);
+zm_State* izmResult(zm_VM* vm, const char *filename, int nline);
 
 zm_Exception *izmCatchException(zm_VM *vm, int ekindfilter, const char* ref,
                                                   const char *fn, int nline);

@@ -82,10 +82,9 @@ ZMTASKDEF(IterMatch)
 	zmstate INIT: {
 	    int pos = PTR2INT(zmarg);
 		zout("init - pos = %d", pos);
-		self = malloc(sizeof(Match));
+		zmdata = self = malloc(sizeof(Match));
 		self->start = pos;
 		self->len = 0;
-		zmData(self);
 	}
 
 	zmstate SEARCH:
@@ -111,7 +110,7 @@ ZMTASKDEF(IterMatch)
 
 	zmstate ACCEPTED:
 		zout("accepted match [%d:%d]", self->start, self->len);
-		zmResponse(self);
+		zmresult = self;
 		/* "self" is used as response so this task cannot be free
 		   until message is received */
 		zmyield zmSUSPEND | TERM;
@@ -147,10 +146,9 @@ ZMTASKDEF(SearchTask)
 	zmstate INIT: {
 	    int pos = PTR2INT(zmarg);
 		zout("init search from pos = %d", pos);
-		self = malloc(sizeof(struct Data));
+		zmdata = self = malloc(sizeof(struct Data));
 		self->iter = zmNewSubTask(IterMatch, NULL);
 		self->pos = pos;
-		zmData(self);
 	    zmyield zmSUB(self->iter, INT2PTR(pos)) | REPLACE;
 	}
 
@@ -211,7 +209,7 @@ ZMTASKDEF(Upper)
 	zmstate INIT: {
 		zout("init");
 		int i, n = 0;
-		self = malloc(sizeof(struct Data));
+		zmdata = self = malloc(sizeof(struct Data));
 
 		for (i = 0; i < textlen; i++)
 			if (text[i] == pattern[0])
@@ -240,8 +238,6 @@ ZMTASKDEF(Upper)
 			sc->pos = i;
 			self->children[n++] = sc;
 		}
-
-		zmData(self);
 	}
 
 	zmstate SEARCH: {

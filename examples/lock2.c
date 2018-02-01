@@ -142,9 +142,8 @@ ZMTASKDEF( mycoroutine )
 	ZMSTART
 
 	zmstate INIT:
-		self = malloc(sizeof(TaskData));
+		zmdata = self = malloc(sizeof(TaskData));
 		self->id = counter++;
-		zmData(self);
 		printf("* task %d: -init-\n", self->id);
 		zmyield ACQUIRE;
 

@@ -1976,34 +1976,26 @@ static void zm_setStateArgument(zm_State *s, void *argument)
 	s->rearg = argument;
 }
 
-void* izmSetData(zm_VM *vm, void *data)
-{
-	vm->session.state->data = data;
-	return data;
-}
 
-
-void izmResponse(zm_VM* vm, void* response, const char *filename, int nline)
+zm_State* izmResult(zm_VM* vm, const char *filename, int nline)
 {
 	zm_State *s = zm_getCurrentState(vm);
 
 	if (zm_isTask(s)) {
 		zm_fatalInit();
-		zm_fatalOn("zmSetResponse", filename, nline);
+		zm_fatalOn("zmresult", filename, nline);
 		zm_fatalDo(ZM_FATAL_UCODE, "SETRESP.PT", vm,
-			   "zmResponse can be used only in subtask");
+			   "zmresult can be used only in subtask");
 	}
 
 	if (zm_hasFlag(s, ZM_STATEFLAG_IMPLOSIONLOCK)) {
 		zm_fatalInit();
-		zm_fatalOn("zmSetResponse", filename, nline);
+		zm_fatalOn("zmresult", filename, nline);
 		zm_fatalDo(ZM_FATAL_UCODE, "SETRESP.IL", vm,
-			   "zmResponse cannot be used in a closing task");
+			   "zmresult cannot be used in a closing task");
 	}
 
-	s = zm_caller(s);
-
-	s->rearg = response;
+	return zm_caller(s);
 }
 
 int zmyieldtrace(zm_VM* vm, const char *name, int line)
@@ -4784,7 +4776,7 @@ static zm_Yield zm_runMachine(zm_VM *vm, zm_Worker *worker, zm_State *s)
 
 	vm->plock = true;
 
-	n = (worker->machine->fun)(vm, s->on.resume, s->data, s->rearg);
+	n = (worker->machine->fun)(vm, s->on.resume, s->rearg);
 
 	vm->plock = false;
 

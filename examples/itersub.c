@@ -42,9 +42,8 @@ ZMTASKDEF( mycoroutine )
 
 	zmstate 1:
 		printf("my task: init\n");
-		self = (struct Self*)malloc(sizeof(struct Self));
+		zmdata = self = (struct Self*)malloc(sizeof(struct Self));
 		self->iter = zmNewSubTask(myiter, NULL);
-		zmData(self);
 
 	zmstate 2:
 		printf("my task: iter\n");

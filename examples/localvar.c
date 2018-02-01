@@ -9,11 +9,11 @@ ZMTASKDEF(foo) {
 
 	ZMSTART
 
-	zmstate 1: {
+	zmstate 1:
 		self = malloc(sizeof(struct FooLocal));
 		self->i = 0;
-		zmData(self);
-	}
+		zmdata = self;
+
 	zmstate 2:
 		self->i++;
 		printf("self->i = %d\n", self->i);

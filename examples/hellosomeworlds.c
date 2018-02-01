@@ -14,9 +14,8 @@ ZMTASKDEF( mycoroutine )
 	ZMSTART
 
 	zmstate 1:
-		self = malloc(sizeof(struct Data));
+		zmdata = self = malloc(sizeof(struct Data));
 		self->id = counter++;
-		zmData(self);
 		printf("task %d: -init-\n", self->id);
 		zmyield (rand() % 2) ? 2 : 4;
 
