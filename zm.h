@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2017, Fabio Sassi <fabio dot s81 at gmail dot com>
+ * Copyright (c) 2015-2018, Fabio Sassi <fabio dot s81 at gmail dot com>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -33,7 +33,7 @@
 #define __ZM_VM_H__
 
 
-#define ZM_VERSION "0.1.2"
+#define ZM_VERSION "0.1.3"
 
 #include <string.h>
 #include <stdio.h>
