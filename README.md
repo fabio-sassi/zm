@@ -1,6 +1,9 @@
 
 # ZM:
-ZM is a C library to handle [continuations](https://en.wikipedia.org/wiki/Continuation) ([coroutine](https://en.wikipedia.org/wiki/Coroutine), exception, [green thread](https://en.wikipedia.org/wiki/Green_threads)) with finite state machines.
+ZM is a C library to handle [continuations](https://en.wikipedia.org/wiki/Continuation)
+([coroutine](https://en.wikipedia.org/wiki/Coroutine), exception, 
+[green thread](https://en.wikipedia.org/wiki/Green_threads)) with 
+finite state machines.
 
 The library is written in *C99* without external dependecy or 
 machine-specific and can be compiled also in *ansi-c* or *ansi-c++* 

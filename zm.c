@@ -1981,17 +1981,19 @@ zm_State* izmResult(zm_VM* vm, const char *filename, int nline)
 {
 	zm_State *s = zm_getCurrentState(vm);
 
+	ZM_ASSERT_VMLOCK("SETRES.VLCK", "zmCLOSE", filename, nline);
+
 	if (zm_isTask(s)) {
 		zm_fatalInit();
 		zm_fatalOn("zmresult", filename, nline);
-		zm_fatalDo(ZM_FATAL_UCODE, "SETRESP.PT", vm,
+		zm_fatalDo(ZM_FATAL_UCODE, "SETRES.PT", vm,
 			   "zmresult can be used only in subtask");
 	}
 
 	if (zm_hasFlag(s, ZM_STATEFLAG_IMPLOSIONLOCK)) {
 		zm_fatalInit();
 		zm_fatalOn("zmresult", filename, nline);
-		zm_fatalDo(ZM_FATAL_UCODE, "SETRESP.IL", vm,
+		zm_fatalDo(ZM_FATAL_UCODE, "SETRES.IL", vm,
 			   "zmresult cannot be used in a closing task");
 	}
 

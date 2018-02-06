@@ -629,17 +629,24 @@ typedef void (*zm_tlock_cb)(void *data, int lock);
 #define zmNewSubTasklet(m, data)                                              \
         izm_addTask((vm), (m), (data), true, ZM_STATEFLAG_AUTOFREE,            \
                                                __FILE__, __LINE__)
+#define zmNewSub zmNewSubTask
+#define zmNewSu  zmNewSubTasklet
 
+#define zmFreeSubTask(task) \
+	zm_freeSubTask(vm, (task));
+
+#define zmFreeSub zmFreeSubTask
 
 /* ** task traversing ** */
-#define zmGetParent(n)   izmGetParent(vm, (n), __FILE__, __LINE__)
-#define zmGetDeep()      izmGetDeep(vm)
-#define zmGetRoot()      izmGetRoot(vm)
-#define zmGetCaller()    izmGetCaller(vm)
+#define zmParent(n)   izmGetParent(vm, (n), __FILE__, __LINE__)
+#define zmDeep()      izmGetDeep(vm)
+#define zmRoot()      izmGetRoot(vm)
+#define zmCaller()    izmGetCaller(vm)
 
 /* retrive data in task stack */
-#define zmGetRootData(s)      ((s*)izmGetRootData(vm))
-#define zmGetCallerData(s)    ((s*)izmGetCallerData(vm))
+#define zmRootData(s)      ((s*)izmGetRootData(vm))
+#define zmCallerData(s)    ((s*)izmGetCallerData(vm))
+#define zmMachine()    (zm_getCurrentMachine(vm))
 
 
 
@@ -661,6 +668,8 @@ typedef void (*zm_tlock_cb)(void *data, int lock);
 #define zmUNRAISE(s, arg) izmUNRAISE(vm, (s), (arg), __FILE__, __LINE__)
 #define zmSSUB(x, arg) izmSUB(vm, (x), (arg), true, __FILE__, __LINE__)
 #define zmCALLER     ZM_TASK_SUSPEND_AND_RESUME_CALLER
+#define zmSU(task, data, arg) zmSUB(zmNewSu((task), (data)), (arg))
+
 
 /* ** task ** */
 #define zmTO(x, arg)                                                          \
@@ -693,6 +702,7 @@ typedef void (*zm_tlock_cb)(void *data, int lock);
 #define zmstate case
 #define zmdata (zm_getCurrentState(vm)->data)
 #define zmresult (izmResult(vm, __FILE__, __LINE__)->rearg)
+#define zmpass {}
 
 /* Task def API*/
 #define ZMTASKDEF(x)                                                          \
@@ -875,6 +885,8 @@ zm_State* izm_addTask(zm_VM *vm, zm_Machine *machine, void *data, bool subtask,
                                           uint8_t flag, const char *fn, int nl);
 
 int zm_freeTask(zm_VM *vm, zm_State *state);
+
+#define zm_freeSub zm_freeSubTask
 
 int zm_freeSubTask(zm_VM *vm, zm_State *state);
 
