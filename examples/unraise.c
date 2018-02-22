@@ -61,6 +61,8 @@ ZMTASKDEF(task1)
 	zmstate 3: {
 	    zm_Exception* e = zmCatch();
 	    const char *msg = (e) ? e->msg : "no exception";
+		if (e)
+		    zm_printException(NULL, e, 1);
 		printf("task1: catching...%s\n", msg);
 	    zmyield 4;
 	}

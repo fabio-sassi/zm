@@ -10,23 +10,12 @@ zm_VM* vm = NULL;
 #define PTR2INT(p) ((int)((size_t)(p)))
 #define INT2PTR(n) ((void*)((size_t)(n)))
 
-/* text from song: "Metallica - Nothing Else Matters" */
 const char *text =
-	"so close, no matter how far\n"
-	"couldn't be much more from the heart\n"
-	"forever trusting who we are\n"
-	"and nothing else matters\n"
-	"never opened myself this way\n"
-	"life is ours, we live it our way\n"
-	"all these words i don't just say\n"
-	"and nothing else matters\n"
-	"trust i seek and i find in you\n"
-	"every day for us something new\n"
-	"open mind for a different view\n"
-	"and nothing else matters\n"
-	"never cared for what they do\n"
-	"never cared for what they know\n"
-	"but i know\n";
+	"    abc cdef cde bc abcd a c efgh\n"
+	"    efg a bcde bcde abcd defg e de\n"
+	"    defg cde abcd cdef ef de defg d\n"
+	"    efgh de efgh b defg\n";
+
 
 int textlen;
 
@@ -50,7 +39,7 @@ void zout(const char *m, ...)
 	va_list args;
 
 	if (c) {
-		const char *name = zm_getCurrentMachineName(vm);
+		const char *name = zm_getMachine(vm)->name;
 		size_t n = zm_getDeep(c);
 
 		for (int i = 0; i < n; i++)
@@ -253,7 +242,7 @@ ZMTASKDEF(Upper)
 
 	zmstate MATCH: {
 	    zm_Exception* e = zmCatch();
-	    zm_State *c = zmGetContinueHandler(e);
+	    zm_State *c = zmContinueBlock(e);
 		int i;
 
 		/* search the child that raise the continue-exception */
@@ -267,7 +256,7 @@ ZMTASKDEF(Upper)
 			}
 		}
 
-		zmraise zmERROR(0, "what?!", NULL);
+		zmraise zmABORT(0, "what?!", NULL);
 	}
 
 	zmstate SELECT: {
@@ -325,8 +314,8 @@ int main(int argc, char *argv[]) {
 		printf("\nusage:\n\t%s pattern\n", argv[0]);
 		printf("\nThe application search for the first two longest\n"
 		       "occurence of pattern and uppercase them.\n\n");
-		printf("Search is performed on this text:\n");
-		printf("--------------------\n%s\n", text);
+		printf("Search is performed on this text:\n\n");
+		printf("%s\n", text);
 		exit(0);
 	}
 

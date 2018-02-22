@@ -5,7 +5,7 @@ DEP=../zm.h ../zm.c
 CC=gcc
 #CC=clang
 
-all: taskdef basic subtask errexcept conexcept event
+all: taskdef basic subtask errexcept conexcept event advanced
 
 taskdef: simple.bin defstyles.bin extern.bin
 
@@ -15,10 +15,11 @@ subtask: itersub.bin hellosomeworlds.bin yieldto.bin argsub.bin
 
 errexcept: errcatch.bin extcatch.bin reset.bin
 
-conexcept: unraise.bin search.bin
+conexcept: unraise.bin 
 
-event: waitinghelloworlds.bin eventcb.bin lock.bin lock2.bin
+event: waitinghelloworlds.bin eventcb.bin lock.bin
 
+advanced: search.bin lock2.bin
 
 %.bin: %.c $(DEP) 
 	$(CC) $(FLAGS) $< -o $@

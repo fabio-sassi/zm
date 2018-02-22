@@ -118,11 +118,13 @@ enum { /* * yield-command * */
 	/* implicit (macro zmEVENT) */
 	ZM_TASK_BUSY_WAITING_EVENT = ZM_B4(6),
 
-	/* implicit macro zmEXCEPTION */
+	/* implicit macro zmCONTINUE */
 	ZM_TASK_RAISE_CONTINUE_EXCEPTION = ZM_B4(7),
 
-	/* implicit macro zmERROR */
-	ZM_TASK_RAISE_ERROR_EXCEPTION = ZM_B4(8)
+	/* implicit macro zmABORT */
+	ZM_TASK_RAISE_ABORT_EXCEPTION = ZM_B4(8),
+
+	ZM_TASK_INIT = ZM_B4(9)
 };
 
 
@@ -146,6 +148,7 @@ enum {
 /* * Special zmstate * */
 #define ZM_INIT 1
 #define ZM_TERM 255
+#define ZM_RESERVED 250
 
 /* *** State Flag *** */
 
@@ -219,7 +222,7 @@ enum {
 
 typedef struct zm_VM_ zm_VM;
 
-typedef struct zm_Exception_ zm_Exception;
+typedef struct zm_Except_ zm_Exception;
 
 typedef struct zm_Trace_ zm_Trace;
 
@@ -374,7 +377,7 @@ struct zm_Trace_ {
 };
 
 
-struct zm_Exception_ {
+struct zm_Except_ {
 	uint8_t kind;
 	int elock;
 
@@ -391,11 +394,11 @@ struct zm_Exception_ {
 };
 
 
-#define ZM_EXCEPTION_ERROR 1
+#define ZM_EXCEPTION_ABORT 1
 #define ZM_EXCEPTION_CONTINUE 2
-#define ZM_EXCEPTION_CONTINUEREF 3
+#define ZM_EXCEPTION_CONTINUE2 3
 #define ZM_EXCEPTION_STARTIMPLOSION 4
-#define ZM_EXCEPTION_UERROR 5
+#define ZM_EXCEPTION_UNCAUGHT 5
 
 
 /* * Machine: avaible in global scope ** */
@@ -555,26 +558,13 @@ typedef enum {
 	ZM_FATAL_SYNC,
 	/* uncaught */
 	ZM_FATAL_NOCATCH
-
 } zm_kfatal_t;
 
 
 typedef void (*zm_tlock_cb)(void *data, int lock);
 
-#define zm_enableFlag(s, FLAG)   (s)->flag |= FLAG
-#define zm_disableFlag(s, FLAG)   (s)->flag &= (0xFF ^ FLAG)
-
-
-#define zm_getCurrentState(vm) ((vm)->session.state)
-#define zm_getCurrentWorker(vm) ((vm)->session.worker)
-#define zm_getCurrentMachine(vm) ((vm)->session.worker->machine)
-#define zm_getCurrentMachineName(vm) ((vm)->session.worker->machine->name)
-
 #define zm_hasFlag(s, FLAG)   ((s)->flag & FLAG)
 #define zm_hasntFlag(s, FLAG)   (((s)->flag ^ FLAG) & FLAG)
-
-
-
 
 /*---------------------------------------------------------------------------
  *  MACRO
@@ -599,10 +589,7 @@ typedef void (*zm_tlock_cb)(void *data, int lock);
 
 #define zm_newTasklet(vm, m, data)                                            \
         izm_addTask((vm), (m), (data), false, ZM_STATEFLAG_AUTOFREE,          \
-                   __FILE__, __LINE__)
-
-#define zm_iterTraceback(var, exception) \
-	for((var) = (exception); (exception); (exception) = (exception)->next)
+                                                 __FILE__, __LINE__)
 
 #define zm_resume(vm, x, arg) izm_resume("zm_resume", (vm), (x), (arg),       \
                                          true, __FILE__, __LINE__)
@@ -610,30 +597,27 @@ typedef void (*zm_tlock_cb)(void *data, int lock);
 /* Inside Task API */
 
 #define zmCatch()                                                             \
-        izmCatchException(vm, 0, "zmCatch", __FILE__, __LINE__)
+        izmCatch(vm, 0, "zmCatch", __FILE__, __LINE__)
 
-#define zmCatchError()                                                        \
-        izmCatchException(vm, ZM_EXCEPTION_ERROR, "zmCatchError",             \
-                                              __FILE__, __LINE__)
+#define zmCatchAbort()                                                        \
+        izmCatch(vm, ZM_EXCEPTION_ABORT, "zmCatchAbort", __FILE__, __LINE__)
 
 #define zmCatchContinue()                                                     \
-        izmCatchException(vm, ZM_EXCEPTION_CONTINUE, "zmCatchContinue",       \
-                                                    __FILE__, __LINE__)
-
-#define zmGetCloseOp()                                                        \
-        izmGetCloseOp(vm, __FILE__, __LINE__)
+        izmCatch(vm, ZM_EXCEPTION_CONTINUE, "zmCatchContinue",                \
+                                           __FILE__, __LINE__)
 
 #define zmNewSubTask(m, data)                                                 \
         izm_addTask((vm), (m), (data), true, 0, __FILE__, __LINE__)
 
 #define zmNewSubTasklet(m, data)                                              \
-        izm_addTask((vm), (m), (data), true, ZM_STATEFLAG_AUTOFREE,            \
-                                               __FILE__, __LINE__)
+        izm_addTask((vm), (m), (data), true, ZM_STATEFLAG_AUTOFREE,           \
+                                                __FILE__, __LINE__)
+
 #define zmNewSub zmNewSubTask
 #define zmNewSu  zmNewSubTasklet
 
 #define zmFreeSubTask(task) \
-	zm_freeSubTask(vm, (task));
+        zm_freeSubTask(vm, (task));
 
 #define zmFreeSub zmFreeSubTask
 
@@ -646,14 +630,15 @@ typedef void (*zm_tlock_cb)(void *data, int lock);
 /* retrive data in task stack */
 #define zmRootData(s)      ((s*)izmGetRootData(vm))
 #define zmCallerData(s)    ((s*)izmGetCallerData(vm))
-#define zmMachine()    (zm_getCurrentMachine(vm))
+#define zmMachine()    (zm_getMachine(vm))
+#define zmCurrent()    (zm_getCurrent(vm))
 
 
 
 /* *** Inside Task Yield API *** */
 
 /* ** exceptions ** */
-#define zmERROR(ecode, msg, data)                                             \
+#define zmABORT(ecode, msg, data)                                             \
         izmEXCEPTION(vm, true, (ecode), (msg), (void*)(data),                 \
                                           __FILE__, __LINE__)
 
@@ -700,7 +685,7 @@ typedef void (*zm_tlock_cb)(void *data, int lock);
 #define zmyield return zmyieldtrace(vm, __FILE__, __LINE__) |
 #define zmraise return 0 |
 #define zmstate case
-#define zmdata (zm_getCurrentState(vm)->data)
+#define zmdata (zm_getCurrent(vm)->data)
 #define zmresult (izmResult(vm, __FILE__, __LINE__)->rearg)
 #define zmpass {}
 
@@ -785,7 +770,7 @@ void zm_print(zm_Print *out, const char *fmt, ...);
 char* zm_popPrintBuffer(zm_Print *out, size_t *size);
 void zm_removePrintBuffer(zm_Print *out);
 
-/* report fatal-error utility */
+/* report fatal utility */
 typedef void (*zm_fatal_cb)(zm_VM *vm, char *msg, void *data);
 
 void zm_fatalInit();
@@ -818,7 +803,7 @@ zm_yield_t izmRESET(zm_VM* vm, int n, const char* filename, int nline);
 
 zm_yield_t izmCLOSE(zm_VM *vm, zm_State *state, const char *fn, int nl);
 zm_yield_t izmDROP(zm_VM *vm, zm_Exception* e, const char *fn, int nl);
-zm_yield_t izmEXCEPTION(zm_VM *vm, bool error, int ecode, const char *msg,
+zm_yield_t izmEXCEPTION(zm_VM *vm, bool abort, int ecode, const char *msg,
                                        void *data, const char *fn, int nl);
 
 zm_yield_t izmUNRAISE(zm_VM *vm, zm_State* state, void *argument,
@@ -835,12 +820,8 @@ int zmyieldtrace(zm_VM* vm, const char *fn, int nl);
 
 zm_State* izmResult(zm_VM* vm, const char *filename, int nline);
 
-zm_Exception *izmCatchException(zm_VM *vm, int ekindfilter, const char* ref,
-                                                  const char *fn, int nline);
-
-void izmFreeException(zm_VM *vm, const char *fn, int nl);
-
-uint8_t izmGetCloseOp(zm_VM *vm, const char *filename, int nline);
+zm_Exception *izmCatch(zm_VM *vm, int ekindfilter, const char* ref,
+                                      const char *fn, int nline);
 
 zm_State* izmGetParent(zm_VM *vm, size_t n, const char *fn, int nl);
 
@@ -854,14 +835,11 @@ void* izmGetRootData(zm_VM *vm);
 
 void* izmGetCallerData(zm_VM *vm);
 
-int zmIsError(zm_Exception *e);
 
+#define zmContinueBlock(e)                                                     \
+       izmContinueBlock(vm, (e), __FILE__, __LINE__);
 
-#define zmGetContinueHandler(e)                                                \
-	izmGetContinueHandler(vm, (e), __FILE__, __LINE__);
-
-zm_State *izmGetContinueHandler(zm_VM* vm, zm_Exception *e, const char *fn,
-                                                                int nline);
+zm_State *izmContinueBlock(zm_VM* vm, zm_Exception *e, const char *fn, int nl);
 
 
 /* event */
@@ -881,8 +859,8 @@ size_t zm_unbindAll(zm_VM *vm, zm_Event *event, void *argument);
 zm_yield_t izm_resume(const char *fname, zm_VM* vm, zm_State *s, void *argument,
                                      int iter, const char *filename, int nline);
 
-zm_State* izm_addTask(zm_VM *vm, zm_Machine *machine, void *data, bool subtask,
-                                          uint8_t flag, const char *fn, int nl);
+zm_State* izm_addTask(zm_VM *vm, zm_Machine *machine, void *data, bool sub,
+                                      uint8_t flag, const char *fn, int nl);
 
 int zm_freeTask(zm_VM *vm, zm_State *state);
 
@@ -900,18 +878,22 @@ zm_State* zm_getCaller(zm_State *s);
 
 zm_State* zm_getCurrent(zm_VM *vm);
 
-zm_Exception *zm_ucatch(zm_VM *vm);
+zm_Machine* zm_getMachine(zm_VM *vm);
 
-void zm_freeUncaughtError(zm_VM *vm, zm_Exception *e);
+zm_Exception *zm_uCatch(zm_VM *vm);
 
-void zm_printError(zm_Print *out, zm_Exception *e, int trace);
+void zm_uFree(zm_VM *vm, zm_Exception *e);
+
+void zm_printTrace(zm_Print *out, zm_Exception *e);
+
+void zm_printException(zm_Print *out, zm_Exception *e, int trace);
 
 
 /* vm - virtual mapper */
 zm_VM* zm_newVM(const char *name);
 int zm_closeVM(zm_VM* vm);
 void zm_freeVM(zm_VM* vm);
-void zm_setProcessStateCallback(zm_VM *vm, zm_process_cb p);
+void zm_setProcessCallback(zm_VM *vm, zm_process_cb p);
 
 /* multi thread support */
 void zm_enableMT(zm_tlock_cb cb, void* data);

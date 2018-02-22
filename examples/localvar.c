@@ -26,5 +26,5 @@ int main()
 {
 	zm_VM *vm = zm_newVM("test ZM");
 	zm_resume(vm , zm_newTasklet(vm , foo, NULL), NULL);
-	zm_go(vm , 5);
+	zm_go(vm, 5);
 }

@@ -25,7 +25,7 @@ ZMTASKDEF( Foo )
 int main()
 {
 	zm_VM *vm = zm_newVM("test ZM");
-	zm_State *f = zm_newTasklet(vm , Foo, NULL);
+	zm_State *f = zm_newTasklet(vm, Foo, NULL);
 
 	printf("task 1: resume with 'Hello'\n");
 	zm_resume(vm, f, "Hello");
@@ -40,7 +40,7 @@ int main()
 	zm_go(vm, 5);
 
 	printf("task 2: resume (but not process) with argument 'Bye'\n");
-	f = zm_newTasklet(vm , Foo, NULL);
+	f = zm_newTasklet(vm, Foo, NULL);
 	zm_resume(vm, f, "Bye");
 
 	zm_closeVM(vm);

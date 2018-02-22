@@ -7,7 +7,7 @@
 ZMTASKDEF( subtask2 ) ZMSTATES
 	zmstate 1:
 		printf("\t\t * subtask2: init\n");
-		zmraise zmERROR(0, "example message", NULL);
+		zmraise zmABORT(0, "example message", NULL);
 
 	zmstate 2:
 		printf("\t\t * subtask2: TERM");
@@ -39,8 +39,8 @@ ZMTASKDEF( task ) ZMSTATES
 		zm_Exception *e = zmCatch();
 		if (e) {
 			printf("* task: catch exception\n");
-			if (zmIsError(e))
-				zm_printError(NULL, e, 1);
+			if (e->kind == ZM_EXCEPTION_ABORT)
+				zm_printException(NULL, e, 1);
 			printf("---------------------------\n");
 			zmyield 3;
 		}

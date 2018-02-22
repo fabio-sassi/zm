@@ -807,7 +807,7 @@ This is the list of command that send a *close* to a task:
 - `zm_abort(...)` 
 - `zmyield zmTERM` 
 - `zmyield zmCLOSE(...)`
-- `zmraise zmERROR(...)`
+- `zmraise zmABORT(...)`
 
 This commands affect not only the target task but also its subtask and
 recursively all relative *data-tree* branch. 
@@ -884,12 +884,12 @@ In `ZM_TERM` the only permitted yield is: `yield zmEND`.
 
 There are two kind of exception in ZM:
 
-- **error exception**
+- **abort exception**
 - **continue exception**
 
 An exception is raised with `zmraise` operator followed by:
 
-1. `zmERROR(int code, const char* msg, void *data)` for error exception
+1. `zmABORT(int code, const char* msg, void *data)` for abort exception
 2. `zmCONTINUE(int code, const char* msg, void *data)` for continue exception
 
 
@@ -928,7 +928,7 @@ with `zmCatch` in the exception-zmstate (equals to "catch"):
 
 - Exceptions can be raised only inside a subtask and can be catch 
   in other subtasks or in the root-ptask.
-- An error-exception without a catch, cause `zm_go` stop and return
+- An abort-exception without a catch, cause `zm_go` stop and return
   `ZM_RUN_EXCEPTION`. The relative exception *must* be catch
   with `zm_ucatch`.
 - A continue-exception without a catch will cause a fatal.
@@ -936,11 +936,11 @@ with `zmCatch` in the exception-zmstate (equals to "catch"):
   (before the next yield). 
 
 
-#### Error Exception:
-Raising an error-exception implies that all tasks between the 
+#### Abort Exception:
+Raising an abort-exception implies that all tasks between the 
 raise and the task before the catch will be aborted.
 
-NOTE: This is not true if there is an error reset (see below).
+NOTE: This is not true if there is an abort reset (see below).
 
 Example:
 
@@ -948,7 +948,7 @@ Example:
 		
 		zmstate 1:
 			printf("\t\tsubtask2: init\n");
-			zmraise zmERROR(0, "example message", NULL);
+			zmraise zmABORT(0, "example message", NULL);
 
 		zmstate 2:
 			printf("\t\tsubtask2: TERM");
@@ -985,8 +985,8 @@ Example:
 			zm_Exception *e = zmCatch();
 			if (e) {
 				printf("task: catch exception\n");
-				if (zmIsError(e))
-					zm_printError(NULL, e, 1);
+				if (e->kind == ZM_EXCEPT_ABORT)
+					zm_printException(NULL, e, 1);
 				zmyield zmTERM;
 			}
 			printf("task: end\n");
@@ -1028,23 +1028,23 @@ output:
 
 
 
-#### Error Exception Reset:
-*Error-reset* allow to avoid the exception-error abort behaviour, 
+#### Abort Exception Reset:
+*Abort-reset* allow to avoid the abort behaviour, 
 defining a zmstate as resume point.
 
 The reset point is defined with this syntax:
 
 	zmyield 4 | zmRESET(7)
 
-To define a resent point in the raise itself use instead: 
+To define a reset point in the raise itself use instead: 
 
-	zmraise zmERROR(0, "test", NULL) | 5;
+	zmraise zmABORT(0, "test", NULL) | 5;
 
-zmRESET cannot be applied to a ptask.
+zmRESET cannot be applied to ptask.
 
 
-#### Uncaught Error Exception:
-An error exception without a catch will be caught by `zm_go` (or `zm_mGo`).
+#### Uncaught Abort Exception:
+An abort exception without a catch will be caught by `zm_go` (or `zm_mGo`).
 This function suddenly return a `ZM_RUN_EXCEPTION`. 
 
 This particular exception is outside task class and must be catch
@@ -1054,13 +1054,14 @@ To catch an uncaught exception use:
 
 	zm_Exception *zm_ucatch(zm_VM *vm)
 
-instead to free an uncaught exception:
+Exceptions caught inside a task are automatically free by task manager, 
+instead uncaught exception must manually free:
 
-	void zm_freeUncaughtError(zm_VM *vm, zm_Exception *e);
+	void zm_ufree(zm_VM *vm, zm_Exception *e);
 
 
-**Note:** A second uncaught exception (before the first one is catch and 
-free) cause a fatal error. 
+**Note:** If an uncaught exception is ignored, the next uncaught
+exception cause a fatal error. 
 
 ##### Example:
 
@@ -1070,18 +1071,17 @@ free) cause a fatal error.
 
 		if (status == ZM_RUN_EXCEPTION) {
 			zm_Exception *e = zm_ucatch(vm);
-			zm_printError(NULL, e, true);
-			zm_freeUncaughtError(vm, e);	
+			zm_printException(NULL, e, true);
+			zm_ufreeException(vm, e);	
 		}
-
-	} while(status)
+	} while(status);
 
 
 #### Continue Exception:
 
-Continue exception have a very different behaviour from error exception. 
+Continue exception have a very different behaviour from abort exception. 
 
-*A continue exception is a kind of (big) suspend-resume block.*
+*A continue exception is a kind of suspend-resume block.*
 
 The continue exception suspend the execution of a subtask in the raise 
 state and resume the state with the catch.
@@ -1101,7 +1101,7 @@ Instead of `zmUNRAISE` is possible also to use:
 	zmyield zmSSUB(sub1, NULL) | 5;
 
 `zmSSUB` act like `zmSUB` if sub1 is a suspended subtask or like `zmUNRAISE`
-if `sub1` is a continue-exception suspended block.
+if `sub1` rappresent the handler of continue-exception suspended block.
 
 
 Example:

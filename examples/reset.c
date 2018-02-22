@@ -18,7 +18,7 @@ ZMTASKDEF( subtask2 ) ZMSTATES
 	zmstate 1:
 		out("* subtask2: init");
 		out("* subtask2: raise");
-		zmraise zmERROR(0, "example message", NULL) | 2;
+		zmraise zmABORT(0, "example message", NULL) | 2;
 
 	zmstate 2:
 		out("* subtask2: RESET OK!");
@@ -70,10 +70,8 @@ ZMTASKDEF( task ) ZMSTATES
 		zm_Exception *e = zmCatch();
 		if (e) {
 			out("* task: catch exception");
-			if (zmIsError(e))
-				zm_printError(NULL, e, true);
+			zm_printException(NULL, e, true);
 			out("---------------------------");
-
 			zmyield zmSUB(sub, NULL) | 4;
 		}
 		zmyield 3;
@@ -102,9 +100,9 @@ void go(zm_VM *vm, const char *prefix)
 		switch(status) {
 		case ZM_RUN_EXCEPTION: {
 			outgo(prefix, "CATCH EXCEPTION");
-			zm_Exception *e = zm_ucatch(vm);
-			zm_printError(NULL, e, true);
-			zm_freeUncaughtError(vm, e);
+			zm_Exception *e = zm_uCatch(vm);
+			zm_printException(NULL, e, true);
+			zm_uFree(vm, e);
 			break;
 		}
 

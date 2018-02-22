@@ -12,7 +12,7 @@ void out(const char *m)
 ZMTASKDEF( subtask2 ) ZMSTATES
 	zmstate 1:
 		out("* subtask2: init");
-		zmraise zmERROR(0, "example message", NULL);
+		zmraise zmABORT(0, "example message", NULL);
 
 	zmstate ZM_TERM:
 		out("* subtask2: TERM");
@@ -68,9 +68,9 @@ void go(zm_VM *vm)
 		switch(status) {
 		case ZM_RUN_EXCEPTION: {
 			out("zm_go: CATCH EXCEPTION");
-			zm_Exception *e = zm_ucatch(vm);
-			zm_printError(NULL, e, true);
-			zm_freeUncaughtError(vm, e);
+			zm_Exception *e = zm_uCatch(vm);
+			zm_printException(NULL, e, true);
+			zm_uFree(vm, e);
 			break;
 		}
 
