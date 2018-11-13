@@ -137,7 +137,7 @@ ZMTASKDEF( mycoroutine )
 {
 	TaskData *self = zmdata;
 
-	enum {INIT = ZM_INIT, ACQUIRE, PROCESS, RELEASE, ABORT};
+	enum {INIT = 1, ACQUIRE, PROCESS, RELEASE, ABORT};
 
 	ZMSTART
 

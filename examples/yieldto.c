@@ -1,5 +1,4 @@
 #include <stdlib.h>
-#define ZM_FAST_SYNTAX 1
 #include <zm.h>
 
 
@@ -15,11 +14,11 @@ ZMTASKDEF(task2)
 
 	zmstate 1:
 		printf("    task2 %s: init %s\n", suffix, arg);
-		yield zmTERM;
+		zmyield zmTERM;
 
 	zmstate ZM_TERM:
 		printf("    task2 %s: end\n", suffix);
-		yield zmEND;
+		zmyield zmEND;
 ZMEND
 
 
@@ -33,7 +32,7 @@ ZMTASKDEF(task1) ZMSTATES
 		 * When sb will yield to zmEND this task will be resumed
 		 * (in zmstate 2)
 		 */
-		yield zmSUB(sb, "(sub)") | 2;
+		zmyield zmSUB(sb, "(sub)") | 2;
 	}
 	zmstate 2: {
 		zm_State *pt = zm_newTasklet(vm, task2, "as ptask");
@@ -42,12 +41,13 @@ ZMTASKDEF(task1) ZMSTATES
 
 		/* This yield resume pt and simply suspend this task */
 
-		yield zmTO(pt, "(to)") | 3;
+		zm_resume(vm, pt, "(resume)");
+		zmyield zmSUSPEND | 3;
 	}
 
 	zmstate 3:
 		printf("task1: term\n");
-		yield zmTERM;
+		zmyield zmTERM;
 
 ZMEND
 

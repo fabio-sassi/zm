@@ -65,12 +65,99 @@ output:
 
 The last `(step)` refer to internal close operations of task `s`.
 
-### Behind the macros:
+## The core of ZM:
 
 The idea behind ZM is to label and split code in a function with 
 `switch`-`case` and use `return` to yield to another piece of code.
 
-A raw implementation of this schema is:
+For example the following code: 
+
+	ZMTASKDEF(foo) {
+		ZMSTART
+
+		zmstate 1:
+			/* yield to zmstate 2 */
+			zmyield 2;
+
+		zmstate 3:
+			/* suspend current task, resume in zmstate 2*/
+			zmyield zmSUSPEND | 2;
+
+		zmstate 2:
+			zmyield 3
+
+		ZMEND
+	}
+
+is converted by C-preprocessor in something like this:
+
+	zm_Machine *foo = zm_newMachine(__foo__);
+
+	int32 __foo__(uint8_t zmop) {
+		switch(zmop) {
+		case 1:
+			return 2;
+
+		case 3:
+			return TASK_SUSPEND | 2;
+
+		case 2:
+			return 3
+
+		default:
+			return zm_default(zmop);
+		}
+	}
+
+`zm_Machine *foo` is a task class used to create task instances (`zm_State`):
+
+The core of the coroutine and task behaviour is inside `zmstate` and `zmyield`
+operators.
+
+- `zmstate` label and split task code in atomic execution blocks.
+- `zmyield` control which `zmstate` will be run next.
+
+For example:
+	
+	zmyield 2;
+
+(converted in `return 2;`) tell to the scheduler that the 
+next `zmstate` to be excuted is `zmstate 2`.
+
+Each byte of the four byte returned (32 bit integer) by the `zmyield`
+operator have a particular meaning: one is the directive while others 
+represent the directive arguments.
+
+for examples:
+
+	/* 1 */
+	zmyield 2;
+
+	/* 2 */
+	zmyield zmSUSPEND | 3;
+
+	/* 3 */
+	zmyield zmSUB(footask, NULL) | 4 | zmNEXT(5) | zmCATCH(7);
+
+
+1. *yield to zmstate 2*: 
+   - directive: inner yield (implicit)
+   - argument: `2` (current task restart in zmstate 2)
+
+2. *yield to suspend and resume in zmstate 3*:
+   - directive: suspend current task
+   - argument: `3` (current task restart in 3 when it
+     will be resumed)
+
+3. *yield to footask, resume in 4, iter in 5 and catch in 7*: 
+   - directive: suspend current task and resume subtask `footask`
+   - argument `4` (resume point when `footask` term)
+   - argument `5` (resume point when `footask` yield to caller)
+   - argument `7` (resume point when `footask` raise an exception)
+  
+### A simple implementation: 
+
+A raw implementation of the schema described above is:
 
 	#define END 100
 
@@ -94,90 +181,17 @@ A raw implementation of this schema is:
 			s1 = foo(s1);
 	}
 
-In this example `return` act like a yield-operator, `foo` represent
+In this example `return` is the yield-operator, `foo` represent
 a task-class, `s1` a task instance and `while` is the scheduler.
 
-In the same way, with the help of some macro, is possible to define
-a ZM task as:
 
-	ZMTASKDEF(foo) {
-		ZMSTART
+# Tasks:
 
-		zmstate 1:
-			/* yield to zmstate 2 */
-			zmyield 2;
-
-		zmstate 3:
-			/* suspend current task, resume in zmstate 2*/
-			zmyield zmSUSPEND | 2;
-
-		zmstate 2:
-			zmyield 3
-
-		ZMEND
-	}
-
-
-The C preprocessor convert this code in something like:
-
-	zm_Machine *foo = zm_newMachine(__foo__);
-
-	int32 __foo__(zm_VM *zm, int zmop, void *zmdata, void *zmarg) {
-		switch(zmop) {
-		case 1:
-			return 2;
-
-		case 3:
-			return TASK_SUSPEND | 2;
-
-		case 2:
-			return 3
-
-		default:
-			return zm_default(zmop);
-		}
-	}
-
-`foo` is a task class that allow to instance tasks (`zm_State`).
-
-`zmstate` define an integer between 1 and 250 for labeling a blocks of 
-(atomic) execution.
-
-`zmyield` allows to return a 32 bit integer that contains a 
-zm-directive with three optional arguments
-
-Examples:
-
-	/* 1 */
-	zmyield 2;
-
-	/* 2 */
-	zmyield zmSUSPEND | 3;
-
-	/* 3 */
-	zmyield zmSUB(s9, NULL) | 4 | zmNEXT(5) | zmCATCH(7);
-
-
-1. *yield to zmstate 2*: directive is implicit (inner yield) with argument `2`
-2. *yield to suspend and resume in zmstate 3*: directive is suspend current 
-   task and argument `3` define the point where task must restart when it
-   will be resumed again.
-3. *yield to s9, resume in 4, iter in 5 and catch in 7*: 
-   directive is suspend current task and resume subtask (`s9`).
-   The three arguments define the zmstate where current task must restart
-   when subtask `s9`:
-   - yield to end (zmstate 4)
-   - yield to suspend (zmstate 5)
-   - raise and exception (zmstate 7)
-  
-
-## Tasks:
-
-In ZM there is two kind of task: **ptask** or *process task*
+In ZM there is two kind of task: **ptask** or *process-task*
 and **subtask**. 
 
 The term **task** is used in this documentation to identify 
-a *generic task*.
+a *generic task* (both ptask and subtask).
 
 ## Task class:
 
@@ -204,7 +218,7 @@ Between `ZMTASKDEF` and `ZMSTART` (in place of `/* [common] */`)
 is possibile to define variable or write piece of code that will executed
 before any zmstate.
 
-### Task states - zmstate:
+## zmstates:
 zmtates define the atomic execution blocks in a task.
 
 	zmstate 100:
@@ -217,33 +231,109 @@ zmtates define the atomic execution blocks in a task.
 
 
 `zmstate` is followed by a positive integer between 1 and 250 (value 
-over 250 are reserved).
+over 250 are reserved)
 
-#### The first zmstate:
-The zmstate 1 is the default resume point for every new instanced task: 
+### The first zmstate:
+`zmstate 1` is the default resume point for every new instanced task: 
 it must always be present.
 
-This zmstate can be used as a constructor.
-
-The library have a constant that can be used in place of 
-the numerical value: `ZM_INIT`.
-
+### Reserved zmstates:
+There are two reserved zmstate `ZM_INIT` and `ZM_TERM`, these cannot be
+use in a yield statement directly.
 
 
-## Process Task:
+## Task manager:
 
-A *ptask* is a [green thread](https://en.wikipedia.org/wiki/Green_threads):
-many *ptasks* can be active at the same time, emulating concurrently 
+Task manager is a scheduler that process actives tasks by **machine steps**.
+
+A machine step is the piece of code between the current `zmstate` 
+and the first yield or raise operator.
+
+Task manager is also called virtual mapper `vm` because it remap the
+execution flow through operator like: `zmstate`, `zmyield`, `zmraise`.
+
+### Instance:
+
+	zm_VM *vm = zm_newVM(const char *name);
+
+This instance a new task manager (`name` is only for debug purpose, it can 
+be NULL).
+
+### Run:
+
+The main "play" command to run any kind of tasks is 
+
+	int zm_go(zm_VM *vm, unsigned int nstep);
+
+while if you want to run only tasks of a given task class: 
+
+	int zm_goMachine(zm_VM *vm, zm_Machine* machine, unsigned int nstep);
+
+where:
+
+- `vm`: the task manager to play with.
+- `machine`: a task class to be executed (`NULL` to execute any active tasks).
+- `nsteps`: number of machine step to perform (zero means: 
+  do nothing and return `ZM_RUN_AGAIN`).
+
+
+`zm_go` is equivalent to `zm_goMachine` with a null `machine` pointer.
+
+	zm_go(vm, 100);
+	/* equals to */
+	zm_goMachine(vm, NULL, 100);
+
+
+These functions return a combination of these flags:
+
+- `ZM_RUN_IDLE` nothing to do
+- `ZM_RUN_AGAIN` there are still active tasks
+- `ZM_RUN_EXCEPTION` an exception have been raised but not catched 
+                     (see `zm_uCatch`)
+- `ZM_RUN_BREK` a vm break as been set (see `vm_break`).
+
+
+`ZM_RUN_IDLE` is numerical equals to 0 so `zm_go` and `zm_goMachine` can
+be used inside a `while`:
+
+	while((status = zm_go(vm, 100))) {
+		/* ... process status */
+	}
+
+### Free:
+
+	zm_freeVM(zm_VM *vm);
+
+This operation can be perfomed only when there is no more task associated
+to this `vm`. 
+
+For this reason it's safer perform a global close operation before:
+
+	/* send a close to all vm tasks */
+	zm_closeVM(vm); 
+	
+	/* wait the end of task close operations */
+	while(zm_go(vm, 100)) {}
+
+	/* free vm */
+	zm_freeVM(vm);
+
+
+
+
+## Process-Task:
+
+A *ptask* is a [green thread](https://en.wikipedia.org/wiki/Green_threads).
+Many *ptasks* can be active at the same time, emulating concurrently 
 execution.
 
 ### Create a ptask: 
 
-`zm_newTask` is used to instance a new ptask:
-
 	zm_State *task = zm_newTask(zm_VM *vm, zm_Machine *m, void *taskdata)
 
-This instance a new ptask relative to the task manager `vm` and with `m` as
-task class.
+This Instance a new ptask `task` relative to the task manager `vm`, with 
+task class `m`. 
+`taskdata` can be used to associate user data to the task (see below).
 
 ### Resume a ptask:
 
@@ -251,9 +341,9 @@ Every ptask is created in suspend mode, to resume it:
 
 	zm_resume(zm_VM *vm, zm_State *task, void *argument);
 
-This add `task` to the task manager list of active ptask. 
+This schedule `task` in the task manager `vm`. 
 
-### ptask example:
+### Example:
 
 	#include <zm.h>
 
@@ -278,7 +368,7 @@ This add `task` to the task manager list of active ptask.
 		/* resume the task */
 		zm_resume(vm, task, NULL);
 
-		/* execute 30 task manager step */
+		/* execute 30 machine step */
 		zm_go(vm, 30);
 
 		/* free the task */
@@ -296,8 +386,8 @@ Subtasks help to reuse code, improve readability and implement
 other continuations structures like **Exception** and 
 **Continue Exception**.
 
-If a process task is like a thread, subtasks are like functions
-executed inside a thread. 
+If a process-task is like a thread, subtasks are like functions
+executed inside a thread.
 
 When a ptask yield to a subtask the ptask is temporary suspended
 in a busy-waiting mode until the subtask don't term or suspend
@@ -325,41 +415,52 @@ with:
 
 	zm_State* subtask = zmNewSubTask(zm_Machine* machine, void *subtaskdata)
 	
-	/* or with short syntax */
+	/* or a bit shorter */
 
 	zm_State *subtask = zmNewSub(zm_Machine* machine, void *subtaskdata);
 
-This can be done only in a task class (between `ZMTASKDEF`
-and `ZMEND`).
+This can be done only in a task class (between `ZMTASKDEF` and `ZMEND`).
 
 
 ### Yield to a subtask (resume a subtask):
 
 While a ptask can be resumed with `zm_resume` a subtask can be resumed 
-only within the `zmyield` operator by a resume yield-operator like `zmSUB`.
+only within the `zmyield` operator by a resume-yield operator like `zmSUB`.
 
-This operation is named *yield to a subtask*.
-
-A subtask resume implies the definition of the current task resume 
-point, for example:
+This operation is named *yield to a subtask*: 
 
 	zmyield zmSUB(zm_State *subtask, void *argument) | resumepoint;
 
-`resumepoint` is the `zmstate` where the current task will restart
-when subtask will yield to end or to suspend.
+`resumepoint` is the `zmstate` where the current task will
+restart when `subtask` yield back to the curren task (caller).
 
-It's possible also to define two different restart zmstate: one 
-when `subtask` yield to suspend `ipoint` and one when yield to end
-`rpoint`:
+### Yield to the caller (return):
 
-	zmyield zmSUB(zm_State *subtask, void *argument) | rpoint
+Yield to a subtask seen above is a kind of function call: subtask is 
+activated and current task (*the caller*) is suspended in a busy 
+waiting mode.
+
+When subtask want to suspend or term its execution it can perform two 
+kind of yield:
+
+- `zmyield zmTERM`: *yield to end* close current task and resume the caller
+- `zmyield zmCALLER`: *yield to the caller* suspend current task and resume
+                      the caller.
+
+Apparently these two yields perform the same operation from the caller 
+point of view but caller can distinguish them defining two resume point:
+
+	zmyield zmSUB(zm_State *subtask, void *argument) | epoint
 	        zmNEXT(ipoint);
 
 
+- `ipoint` zmstate where the current task will restart when `subtask` yield
+           to the caller.
+- `epoint`  zmstate where the current task will restart when `subtask` yield
+           to end.
 
 
-#### subtasks example:
-
+### Example:
 
 	#include <zm.h>
 
@@ -409,86 +510,95 @@ when `subtask` yield to suspend `ipoint` and one when yield to end
 	}
 
 
+## Case convention:
 
-### Local variables:
+The code of a task class (everything between `ZMTASKDEF` and `ZMEND`)
+is a special context.
+Some function and operator like `zmyield` or `zmSUB` have meaning only inside
+the **task class context** while others like `zm_resume` can stay everywhere
+(in a *generic context*).
 
-Each task instance (`zm_State` pointer) has a `data` field used to
-to store local variable.
+The main case convention rule is that commands that can be used only in 
+*task class context* don't have underscore after *zm* prefix, 
+while commands that can be used in a generic context have it.
+
+
+### Task class context:
+
+1. **ZMABC**: task class operators
+	- `ZMTASKDEF`
+	- `ZMSTART`
+	- `ZMEND`
+2. **zmAbcXyz**: functions
+	- `zmNewSubTask()`
+	- `zmCatch()`
+	- `zmCurrent()`
+	- ...
+3. **zmabc**: operators or variables
+	- `zmyield`
+	- `zmraise`
+	- `zmstate`
+	- `zmdata`
+	- `zmresult`
+	- `zmarg`
+	- `zmop`
+4. **zmABC**: zmyield modifiers
+	- `zmSUB()`
+	- `zmNEXT()`
+	- `zmCATCH()`
+	- `zmTERM` ...
+
+### Generic context:
+
+1. **zm\_abcDefg**: functions that can be used inside or outside task class
+    - `ZM_resume()`
+    - `ZM_newTask()`
+    - `ZM_trigger()`
+	- `ZM_abort()` ...
+2. **zm\_ABC\_XYZ**: library constants
+   - `ZM_INIT`
+   - `ZM_TERM`, ...
+3. **zm\_AbcXyz**: library structures
+   - `zm_State`
+   - `zm_Event`, ...
+
+
+
+## Task data:
+
+Each task instance has a `void *data` field used to store data.
 
 	typedef struct {
 		/* ... */
 		void *data;
 	} zm_State;
 
-This field can be easly reach in task class with the macro-variable
-**zmdata**:
+The task data can be set using task instantiation functions:
 
-	#include <zm.h>
-	#include <stdio.h>
+	zm_State* zm_newTask(vm_VM* vm, zm_Machine *m, void *taskdata);
+	zm_State* zmNewSub(zm_Machine *m, void *taskdata);
 
-	struct FooLocal {
-		int j;
-	};
+using the `data` field: 
 
-	ZMTASKDEF(foo) {
-		struct FooLocal* self = zmdata;
-		int i = 0;
+	zm_State *task = zm_newTask(vm, foo, NULL);
 
-		ZMSTART
+	task->data = taskdata;
 
-		zmstate 1:
-			self->j = 0;
+or inside task using *zmdata* macro.
 
-		zmstate 2:
-			i++;
-			self->j++;
-			printf("i = %d  self->j = %d\n", i, self->j);
-			zmyield 2;
-		ZMEND
-	}
+The main purpose of task data is to define permanent *local variables*.
 
-	int main()
-	{
-		zm_VM *vm = zm_newVM("test ZM");
-		void *d = malloc(sizeof(struct FooLocal));
-		zm_resume(vm , zm_newTasklet(vm , foo, d), NULL);
-		zm_go(vm , 5);
-	}
+### Task data in class definition:
 
-output:
+Inside class definition task data can be reached with 
+the help of **zmdata** macro.
 
-	i = 1  self->j = 1
-	i = 1  self->j = 2
-	i = 1  self->j = 3
-	i = 1  self->j = 4
-	i = 1  self->j = 5
+`zmdata` act like a variable but is a macro that will be replaced with
+`(zm_getCurrent(vm)->data)`.
 
-In this example `i` is a temporary variable that exists only in a machine
-step and will be lost when a `zmyield` is reach.
-On the other side `zmdata` can store persitent variables without any restriction.
+`zmdata` can be used to read task data but also to define it.
 
-`zmdata` act like a variable but is a macro that extract data from current 
-executing state, for this reason is a reserved word.
-
-	#define zmdata (zm_getCurrentState(vm)->data)
-
-The task data can be set in task instantiation:
-
-	zm_State *t = zm_newTask(vm, task, taskdata)
-	zm_State *s = zmNewSub(task, taskdata)
-
-through data field in `zm_State` struct: 
-
-	t->data = taskdata;
-
-or with macro `zmdata` in task class:
-
-	zmstate 1:
-		zmdata = get_taskdata();
-
-This simple example show how to use `zmdata` to create persistents 
-locals variables:
-
+#### Example:
 	#include <stdio.h>
 	#include <zm.h>
 
@@ -522,22 +632,255 @@ locals variables:
 
 
 
-### The Resume Argument:
+### Persistent and temporary variables:
+
+Task data can be used to define persistent variables associated to a task.
+These variables exists since they are not manually free.
+
+On the other side normal variables exists only in a machine step and for
+this reason have meaning only inside a zmstate block. 
+
+#### Example
+
+	#include <zm.h>
+	#include <stdio.h>
+
+	struct FooLocal {
+		int j;
+	};
+
+	ZMTASKDEF(foo) {
+		struct FooLocal* self = zmdata; /* local */
+		int i = 0; /* temporary */
+
+		ZMSTART
+
+		zmstate 1:
+			self->j = 0;
+
+		zmstate 2:
+			i++;
+			self->j++;
+			printf("i = %d  self->j = %d\n", i, self->j);
+			zmyield 2;
+		ZMEND
+	}
+
+	int main()
+	{
+		zm_VM *vm = zm_newVM("test ZM");
+		void *d = malloc(sizeof(struct FooLocal));
+		zm_resume(vm , zm_newTasklet(vm , foo, d), NULL);
+		zm_go(vm , 5);
+	}
+
+output:
+
+	i = 1  self->j = 1
+	i = 1  self->j = 2
+	i = 1  self->j = 3
+	i = 1  self->j = 4
+	i = 1  self->j = 5
+
+In this example `i` is a temporary variable (exists only in a machine
+step its content will be lost when a `zmyield` is reach) while `zmdata`
+store persitent variables.
+
+
+
+### Task constructor:
+
+Allocate local variable before task instance (through global 
+shared struct) is a strong design but the task is less 
+"self-contained" and code have an higher "struct pollution".
+
+	struct FooData {
+		int i;
+		int j;
+		int k;
+	};
+
+
+	/* [...] */
+
+	ZMTASKDEF(foo) {
+		struct FooData *self = zmdata;
+
+		/* [...] */
+	}
+
+	/* [...] */
+
+	void instance_foo(zm_VM *vm) {
+		struct FooData *d = malloc(struct FooData);
+		zm_State *task;
+		d->i = 0;
+		d->j = 0;
+		d->k = 0;
+		task = zm_newTask(vm, foo, d);
+	}
+
+
+On the other side define task data in task class have a bettere 
+readability, reduce the struct pollution but have a 
+weaker design caused by some syncronization problems.
+
+
+	ZMTASKDEF(foo) {
+		struct Data {
+			int i;
+			int j;
+			int k;
+		} *self = zmdata;
+
+		zmstate 1:
+			zmdata = self = malloc(struct Data);
+			self->i = 0;
+			self->j = 0;
+			self->k = 0;
+			/* [...] */
+	
+		zmstate ZM_TERM:
+			/* self can be NULL if this task is aborted before the
+			   scheduler process zmstate 1 */
+			free(self);
+	}
+
+
+
+Task constructor allow to perform a special zmstate in a sync way
+to allocate resource.
+This remove the syncronization issue and add more flexibility
+to the task instance.
+
+If `zmstate ZM_INIT` is defined in a task class this is used
+during the instantiation as a syncronous constructor.
+
+	zmstate ZM_INIT:
+		/* allocate resources */
+		zmyield zmDONE;
+
+The constructor is perfomed in a special execution mode and should be
+used only for instance and define task data.
+
+The only permitted yield inside constructor is `zmyield zmDONE`.
+
+NOTE: `ZM_INIT` is a reserved zmstate, so cannot be used in 
+a yield statement.
+
+An important feature about task constructor is that `zmdata` can 
+be used as constructor argument as shown in the next example.
+
+### Example:
+
+	#include <zm.h>
+	#include <stdio.h>
+
+	ZMTASKDEF(foo) {
+		struct FooLocal {
+			int i;
+		} *self = zmdata;
+
+		ZMSTART
+
+		zmstate ZM_INIT: {
+			int *n0 = zmdata;
+			printf("foo: constructor(%d)\n", *n0);
+
+			zmdata = self = malloc(sizeof(struct FooLocal));
+			self->i = *n0;
+			zmyield zmDONE;
+		}
+
+		zmstate 1:
+			printf("foo: self->i = %d\n", self->i++);
+			zmyield 1;
+
+		zmstate ZM_TERM:
+			printf("foo: distructor\n");
+			free(self);
+
+		ZMEND
+	}
+
+	int main()
+	{
+		zm_VM *vm = zm_newVM("test ZM");
+		zm_State *task;
+		int n0 = 4;
+		task = zm_newTasklet(vm , foo, &n0);
+		zm_resume(vm , task, NULL);
+		zm_go(vm, 5);
+		zm_closeVM(vm);
+		zm_go(vm, 100);
+		zm_freeVM(vm);
+	}
+
+
+output:
+
+	foo: constructor(4)
+	foo: self->i = 4
+	foo: self->i = 5
+	foo: self->i = 6
+	foo: self->i = 7
+	foo: self->i = 8
+	foo: distructor
+
+
+
+## The Resume Argument:
 
 The local variables system above is a way to store data and can 
-also be used to exchange messages but there is a more specific
-feature for this work.
+also be used to exchange messages as in task constructor.
 
-The *resume argument* allow pass a pointer to a resume function/operator
-that will be accessible in resumed task as **zmarg**.
+Anyway, outside task constructor, exchange messages through task data
+entail some kind of variable sharing that can be source of syncronization
+issue. To avoid this kind of problem and have a better control on the 
+resume operation is possibile to use the **resume argument**.
 
-NOTE: *resume argument* is avaible in a task only for a machine step after
-resume.
+*Resume argument* is a pointer that can be defined:
+
+- in all resume function (`zm_resume`)
+- in all resume-yield operator (`zmSUB`)
+- before yield back to caller (`zmyield zmCALLER`, `zmyield zmTERM`)
+
+
+This pointer will be accessible in the first machine step on resumed task.
+
+In task class the resume argument pointer is stored inside **zmarg**.
+
+
+### Resume argument as a parameter:
+
+Each resume functions or operators allow to set the resume argument. 
+This act like a task parameter:
+
+- `zm_resume(zm_VM* vm, zm_State* task, void* resumearg)`
+- `zmSUB(zm_State* task, void* resumearg)`
+- `zmSSUB(zm_State* task, void* resumearg)`
+- `zmUNRAISE(zm_State* task, void* resumearg)`
+- `zm_trigger(zm_VM *vm, zm_Event* event, void* resumearg)`
+
+### Resume argument as a return:
+
+Resume argument can also be used as `return`. A subtask can set it
+before yield to end or to the caller using `zmresult`.
+
+`zmresult` is a macro that act like a variable (can be used only inside 
+a subtask).
+
+	zmresult = (void*)data;
+	zmyield zmTERM;
+
+### Example:
 
 	ZMTASKDEF( Foo )
 	{
-		const char* arg = ((zmarg) ? (const char*)(zmarg) : "<none>");
+		const char* arg = (zmarg) ? (const char*)(zmarg) : "<none>";
+
 		printf("zmarg = %s\n", arg);
+
 		ZMSTART
 
 		zmstate 1:
@@ -576,89 +919,11 @@ output:
 	foo: 2
 	zmarg = <none>
 
-#### As a parameter:
-
-Each resume functions or operators allow to set this argument.
-In these functions the resume argument act like a function parameter:
-
-- `zm_resume(vm, task, resumearg)`
-- `zmSUB(task, resumearg)`
-- `zmSSUB(task, resumearg)`
-- `zmUNRAISE(task, resumearg)`
-- `zmTO(task, resumearg)`
-- `zmLAST(task, resumearg)`
-- `zm_trigger(vm, event, resumearg)`
-
-#### As a return:
-
-Resume argument can also be used as "return value". A subtask can set it
-before suspend or term using the reserved word `zmresult`.
-`zmresult` is a macro that return the zmarg from the caller so it act like
-a variable but can be used only inside a subtask.
-
-	zmresult = (void*)somedata;
 
 
-## Task classes and case convention:
+## Task class syntaxes:
 
-The code of a task class (everything between `ZMTASKDEF` and `ZMEND`)
-is a special context with some specific rules.
-In fact some function and operator have meaning only inside
-the **task-class-context** while others can stay everywhere
-(**generic-context**).
-
-`zmstate`, `zmyield`, and `zmCatch` are examples of operators and functions
-that can be used only inside task-class-context while `zm_resume` in 
-a generic-context.
-
-The main case convention is that commands of *task-class-context*
-don't have underscore after *zm* prefix, while commands that can
-be used in every context have it.
-
-### Task-class context:
-
-1. **ZMABC**: task class operators
-	- `ZMTASKDEF`
-	- `ZMSTART`
-	- `ZMEND`
-2. **zmAbcXyz**: functions
-	- `zmNewSubTask()`
-	- `zmCatch()`
-	- `zmRootData()`
-	- ...
-3. **zmabc**: reserved operators or variables
-	- `zmyield`
-	- `zmraise`
-	- `zmstate`
-	- `zmdata`
-	- `zmresult`
-	- `zmarg`
-	- `zmop`
-4. **zmABC**: zmyield modifiers
-	- `zmSUB()`
-	- `zmNEXT()`
-	- `zmCATCH()`
-	- `zmTERM` ...
-
-### Generic-context:
-
-1. **zm\_abcDefg**: functions that can be used inside or outside task class
-    - `ZM_resume()`
-    - `ZM_newTask()`
-    - `ZM_trigger()`
-	- `ZM_abort()` ...
-2. **zm\_ABC\_XYZ**: library constants
-   - `ZM_INIT`
-   - `ZM_TERM`, ...
-3. **zm\_AbcXyz**: library structures
-   - `zm_State`
-   - `zm_Event`, ...
-
-
-### Task class syntaxes:
-
-There are some equivalent syntax in task class for example `zmyield`
-can be replaced with `yield` (defining `ZM_FAST_SYNTAX`) and `ZMSTATES`
+There are some equivalent syntax in task class for example `ZMSTATES`
 can be used in place of `ZMSTART`.
 Moreover `ZMTASKDEF` and `ZMEND` implicit use curly braces `{}` making
 possible to don't use them. All this features allow to define
@@ -680,7 +945,7 @@ can also be written as:
 	ZMEND
 
 
-### Tasklet:
+## Tasklet:
 
 A tasklet is a task that have not to be manually free, it will automatically 
 free after the close operations.
@@ -702,77 +967,24 @@ Tasklets are useful when `zm_State` reference is useless, for example in
 one-shot operations (operations without any suspend).
 
 
-### Run tasks:
-
-#### The Task Manager:
-Task manager or virtual mapper `vm` cycle through active tasks and 
-process them step by step.
-A step (also called **machine step**) is the piece of code between the
-current `zmstate` and the first yield or raise operator.
-
-The main purpose of task manager in ZM is to remap the execution flow
-defined by `zmstate`, `zmyield` and `zmraise`. For this reason is 
-called virtual mapper.
-
-#### Instance a VM:
-
-	zm_VM *vm = zm_newVM(const char *name);
-
-`name` is used only for debug message and cannot be NULL.
-
-#### Run:
-
-The main "play" command to run any kind of tasks is 
-
-	int zm_go(zm_VM *vm, unsigned int nstep);
-
-while if you want to run only task of a given task class: 
-
-	int zm_goMachine(zm_VM *vm, zm_Machine* machine, unsigned int nstep);
-
-where:
-
-- `vm`: the task manager to play with.
-- `machine`: a task class to be executed (`NULL` to execute any active tasks).
-- `nsteps`: number of machine step to perform (zero means: 
-  do nothing and return `ZM_RUN_AGAIN`).
-
-
-`zm_go` is equivalent to `zm_goMachine` with a null `machine` pointer.
-
-	zm_go(vm, 100);
-	/* equals to */
-	zm_goMachine(vm, NULL, 100);
-
-
-These functions return a combination of these flags:
-
-`ZM_RUN_IDLE` nothing to do
-`ZM_RUN_AGAIN` there are some active task
-`ZM_RUN_EXCEPTION` an exception have been raised but not catched (see 
- `zm_ucatch`)
-`ZM_RUN_BREK` a vm break as been set (see `vm_break`).
 
 
 
 
 
-
-
-## ZM Concept
+# Exception and closing operations:
 
 Before speak about exceptions and tasks closing is better to explain 
 some concept behind ZM.
 
-
-### Execution-context:
+## Execution-context:
 A ptask and the set of its subtasks create an **execution-context**. 
 In an execution-context only one between root-ptask or child-subtasks 
 can be active at a specific time, in other words in the same context
 operations are syncronous.
 
 
-### Execution-stack:
+## Execution-stack:
 Inside an execution-context a ptask can yield to a subtask and subtask to 
 other subtasks. This can be represented as a stack: the **execution-stack**.
 
@@ -780,7 +992,7 @@ All elements in the execution-stack, with the only exception of the last one,
 are busy-waiting another subtask.
 
 
-### Data-tree:
+## Data-tree:
 
 The *execution-stack* keep track of yields but there is another important
 stored relation: the association between a task and its subtasks:
@@ -797,7 +1009,7 @@ leaves direction so the deallocation must follow the same structure in the
 reversed direction.
 
 
-### Close tasks:
+## Close tasks:
 
 When a task receive a *close* command it changes its operational mode
 from *normal-mode* (default) to **closing-mode**.
@@ -814,18 +1026,59 @@ recursively all relative *data-tree* branch.
 
 There are two important feature of the close system: 
 
-*The order of execution of the close is from leaves to root (implosion).*
+*1) The order of execution of the close is from leaves to root (implosion).*
 
 This is due to resource allocation order of subtask: from root to leaves,
 close must go in reversed order.
 
-*The execution of the close is done in a serial way as any other operation*
+*2) The execution of the close is done in a serial way as any other operation*
 *in the same execution-context.*
 
 This avoid race-condition during resource free.
 
 
-### Free tasks:
+
+## The task destructor:
+
+Every task that receive a close command will be resumed in a special
+zmstate used for deallocate user data resources: `ZM_TERM`.
+
+It is not mandatory to define it (can be omitted). 
+
+`ZM_TERM`is a reserved zmstate so can't be used within a yield:
+
+		/* wrong yield: cause fatal */
+		zmyield ZM_TERM;
+
+		/* use instead a close operation like */
+		zmyield zmTERM;
+
+
+In `ZM_TERM` the only permitted yield is: `yield zmEND`.
+
+### Example:
+	ZMTASKDEF(foo2)
+	{
+		ZMSTART
+		
+		zmstate ZM_INIT: 
+			zmdata = malloc(sizeof(int));;
+			zmyield zmDONE;
+
+		zmstate 1:
+			zmyield 2;
+
+		zmstate 2:
+			zmyield zmTERM;
+
+		zmstate ZM_TERM:
+			free(zmdata);
+			zmyield zmEND;
+
+		ZMEND
+	}
+
+## Free tasks:
 
 A task can be free only if it has just receive a *close*. The commands to
 free a task are:
@@ -839,42 +1092,6 @@ free a task are:
 The free commands cannot be perfomed in a *sync way* because the task manager
 should have to finish close operation before a task can be freed.
 
-
-
-### The task destructor:
-
-Every task that receive a close command will be resumed in a special
-zmstate used for deallocate user data resources: `ZM_TERM`.
-
-It is not mandatory to define this zmstate so may be omitted. 
-
-This zmstate cannot be used in a direct yield:
-
-		zmyield ZM_TERM; /* wrong: fatal error */
-		zmyield zmSUB(foo, NULL) | ZM_TERM; /* wrong: fatal error */
-
-It's automaticaly set as a resume point after a close operation 
-(e.g. `yield zmTERM`).
-
-In `ZM_TERM` the only permitted yield is: `yield zmEND`.
-
-#### Example:
-	ZMTASKDEF(foo2)
-	{
-		ZMSTART
-		
-		zmstate ZM_INIT: 
-			zmdata = malloc(sizeof(int));;
-			zmyield zmTERM;
-
-		zmstate ZM_TERM:
-			if (zmdata)
-				free(zmdata);
-
-			zmyield zmEND;
-
-		ZMEND
-	}
 
 
 
@@ -909,6 +1126,7 @@ The exception catching is performed declaring the exception-zmstate
 resume point with `zmCATCH` (equals to "try") and fetching the exception
 with `zmCatch` in the exception-zmstate (equals to "catch"):
 
+
 	zmstate 1:
 		zmyield zmSUB(sub1, NULL) | 2 |  zmCATCH(3);
 
@@ -924,13 +1142,14 @@ with `zmCatch` in the exception-zmstate (equals to "catch"):
 	}
 
 
-###Exception feature and rule:
+
+### Exception feature and rule:
 
 - Exceptions can be raised only inside a subtask and can be catch 
   in other subtasks or in the root-ptask.
 - An abort-exception without a catch, cause `zm_go` stop and return
   `ZM_RUN_EXCEPTION`. The relative exception *must* be catch
-  with `zm_ucatch`.
+  with `zm_uCatch`.
 - A continue-exception without a catch will cause a fatal.
 - In the catch zmstate, exception must be catch with `zmCatch()`
   (before the next yield). 
@@ -938,7 +1157,7 @@ with `zmCatch` in the exception-zmstate (equals to "catch"):
 
 #### Abort Exception:
 Raising an abort-exception implies that all tasks between the 
-raise and the task before the catch will be aborted.
+raise and the task before the catch will be closed.
 
 NOTE: This is not true if there is an abort reset (see below).
 
@@ -1044,7 +1263,7 @@ zmRESET cannot be applied to ptask.
 
 
 #### Uncaught Abort Exception:
-An abort exception without a catch will be caught by `zm_go` (or `zm_mGo`).
+An abort exception without a catch will be caught by `zm_go` 
 This function suddenly return a `ZM_RUN_EXCEPTION`. 
 
 This particular exception is outside task class and must be catch
@@ -1052,12 +1271,12 @@ and free with special functions.
 
 To catch an uncaught exception use:
 
-	zm_Exception *zm_ucatch(zm_VM *vm)
+	zm_Exception *zm_uCatch(zm_VM *vm)
 
 Exceptions caught inside a task are automatically free by task manager, 
-instead uncaught exception must manually free:
+instead uncaught exception must manually free with:
 
-	void zm_ufree(zm_VM *vm, zm_Exception *e);
+	void zm_uFree(zm_VM *vm, zm_Exception *e);
 
 
 **Note:** If an uncaught exception is ignored, the next uncaught
@@ -1070,9 +1289,9 @@ exception cause a fatal error.
 		status = zm_go(vm, 100)
 
 		if (status == ZM_RUN_EXCEPTION) {
-			zm_Exception *e = zm_ucatch(vm);
+			zm_Exception *e = zm_uCatch(vm);
 			zm_printException(NULL, e, true);
-			zm_ufreeException(vm, e);	
+			zm_uFree(vm, e);	
 		}
 	} while(status);
 
@@ -1215,7 +1434,7 @@ or an unbind resume them.
 
 ### Create an Event:
 
-	zm_Event *event = zm_newEvent(data);
+	zm_Event *event = zm_newEvent(void *data);
 
 `data` is `void *` pointer that can be accessible from `event->data`
 

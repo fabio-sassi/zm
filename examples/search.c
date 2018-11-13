@@ -66,7 +66,7 @@ ZMTASKDEF(IterMatch)
 
 	ZMSTART
 
-	enum {INIT = ZM_INIT, SEARCH, ENDMATCH, ACCEPTED, TERM};
+	enum {INIT = 1, SEARCH, ENDMATCH, ACCEPTED, TERM};
 
 	zmstate INIT: {
 	    int pos = PTR2INT(zmarg);
@@ -128,7 +128,7 @@ ZMTASKDEF(SearchTask)
 		int pos;
 	} *self = zmdata;
 
-	enum {INIT = ZM_INIT, REPLACE};
+	enum {INIT = 1, REPLACE};
 
 	ZMSTART
 
@@ -191,7 +191,7 @@ ZMTASKDEF(Upper)
 		int selected;
 	} *self = zmdata;
 
-	enum {INIT = ZM_INIT, SEARCH, SELECT, MATCH};
+	enum {INIT = 1, SEARCH, SELECT, MATCH};
 
 	ZMSTART
 

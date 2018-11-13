@@ -1,5 +1,5 @@
 #FLAGS=-O3 -std=c99 -Wall -DZM_DEBUG_LEVEL=5 -I../../ ../../zm.c
-FLAGS=-O3 -std=c99 -Wall -I../ ../zm.c
+FLAGS=-g -std=c99 -Wall -I../ ../zm.c
 DEP=../zm.h ../zm.c
 
 CC=gcc
@@ -9,7 +9,7 @@ all: taskdef basic subtask errexcept conexcept event advanced
 
 taskdef: simple.bin defstyles.bin extern.bin
 
-basic: helloworld.bin localvar.bin arg.bin
+basic: helloworld.bin localvar.bin localvar2.bin arg.bin
 
 subtask: itersub.bin hellosomeworlds.bin yieldto.bin argsub.bin
 
@@ -19,7 +19,7 @@ conexcept: unraise.bin
 
 event: waitinghelloworlds.bin eventcb.bin lock.bin
 
-advanced: search.bin lock2.bin
+advanced: search.bin lock2.bin localvar3.bin
 
 %.bin: %.c $(DEP) 
 	$(CC) $(FLAGS) $< -o $@

@@ -4,7 +4,7 @@ This folder contain some ZM examples
 ### Task definition:
 
 - A simple task with ZM: [simple.c](simple.c)
-- Two example of task definition style: [defstyles.c](defstyles.c)
+- Two examples of task definition style: [defstyles.c](defstyles.c)
 - Declarare and define a task in different files: [extern1.c](extern1.c), 
   [extern2.c](extern2.c)
 
@@ -12,6 +12,7 @@ This folder contain some ZM examples
 
 - Hello world as a task: [helloworld.c](helloworld.c)
 - Local variables in a task: [localvar.c](localvar.c)
+- Local variables in a task with constructor and distructor [localvar22.c](localvar2.c)
 - Resume argument in a task: [arg.c](arg.c)
 
 
@@ -19,7 +20,7 @@ This folder contain some ZM examples
 
 - A task with a subtask: [itersub.c](itersub.c)
 - Hello world with some concurrent task: [hellosomeworlds.c](hellosomeworlds.c)
-- Difference between `zmTO` and `zmSUB`: [yieldto.c](yieldto.c)
+- Differences between `zmTO` and `zmSUB`: [yieldto.c](yieldto.c)
 - Resume argument in a task and subtask response: [argsub.c](argsub.c)
 
 ### Error Exception:
@@ -32,14 +33,20 @@ This folder contain some ZM examples
 ### Continue Exception:
 
 - Raise and unraise a continue exception: [unraise.c](unraise.c)
-- Uppercase the best matching substring pattern within a text (avanced example): [search.c](search.c)
 
 ### Events:
 
 - Hello world with an event [waitinghelloworlds.c](waitinghelloworlds.c)
 - Trigger and unbind event callback [eventcb.c](eventcb.c) 
 - A simple task lock system [lock.c](lock.c)
+
+
+### Advanced:
+
+- Sync and async local variables instance in a task: [localvar3.c](localvar3.c)
+
 - A bit more advanced task lock system with force unlock and owner check
   [lock2.c](lock2.c)
   
+- Uppercase the best matching substring pattern in a text: [search.c](search.c)
 
