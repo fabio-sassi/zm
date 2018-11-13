@@ -503,7 +503,7 @@ typedef struct zm_Print_ zm_Print;
 
 typedef struct {
 	int by;
-	int wscheck;
+	int busycheck;
 
 	size_t fromdeep;
 	size_t todeep;

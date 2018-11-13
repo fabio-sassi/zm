@@ -841,8 +841,6 @@ static void zm_queueTreeAdd(zm_StateQueue *q, zm_State *s)
  *  PRINT VM STRUCTURE FUNCTIONS
  * --------------------------------------------------------------------------*/
 
-/* TODO replace zm_get[A-Z]... with zm_[a-z]... */
-
 #define ZM_DEFAULT_OUT stdout
 #define ZM_DEFAULT_OUT_ON_NULL(out)                                           \
     zm_Print defaultout;                                                      \
@@ -866,7 +864,7 @@ static const char *zm_exceptionName(zm_Exception *e)
 }
 
 
-static const char *zm_getYieldCommandName(int n)
+static const char *zm_yieldCommandName(int n)
 {
 	switch(ZM_B4(n)) {
 	ZM_STRCASE(ZM_TASK_CONTINUE);
@@ -882,7 +880,7 @@ static const char *zm_getYieldCommandName(int n)
 	return "unknow yield command";
 }
 
-static const char *zm_getImplodeFlagName(int implodeby)
+static const char *zm_implodeFlagName(int implodeby)
 {
 	switch (implodeby) {
 	ZM_STRCASE(ZM_IMPLODEBY_EXCEPTION);
@@ -894,15 +892,15 @@ static const char *zm_getImplodeFlagName(int implodeby)
 }
 
 #if ZM_DEBUG_LEVEL >= 1
-static const char *zm_getWSCheckFlagName(int wscheck)
+static const char *zm_busyCheckFlagName(int busycheck)
 {
-	switch (wscheck) {
+	switch (busycheck) {
 	ZM_STRCASE(ZM_WSCHECK_ALL);
 	ZM_STRCASE(ZM_WSCHECK_NONE);
 	ZM_STRCASE(ZM_WSCHECK_SKIPFIRST);
 	}
 
-	return "unknow wscheck flag";
+	return "unknow busycheck flag";
 }
 #endif
 
@@ -2298,9 +2296,9 @@ static int zm_isSyncImplode(zm_LockAndImplode *li)
 	return (li->by != ZM_IMPLODEBY_ROOT);
 }
 
-static void zm_enableWS(zm_LockAndImplode *li)
+static void zm_setBusyCheck(zm_LockAndImplode *li, int mode)
 {
-	li->wscheck = ZM_WSCHECK_ALL;
+	li->busycheck = mode;
 }
 
 
@@ -2314,25 +2312,25 @@ static void zm_initLockAndImplode(zm_LockAndImplode *li, int implodeby)
 
 	switch (implodeby) {
 	case ZM_IMPLODEBY_SUB:
-		li->wscheck = ZM_WSCHECK_ALL;
+		zm_setBusyCheck(li, ZM_WSCHECK_ALL);
 		break;
 
 	case ZM_IMPLODEBY_EXCEPTION:
-		/* in implode by exception the wscheck will be enabled
-		 * (zm_enableWS) after set the implode lock in exception
+		/* in implode by exception the busycheck will be enabled
+		 * after have implode-locked the exception
 		 * path trace (that contain waiting subtask)*/
 	case ZM_IMPLODEBY_ROOT:
-		li->wscheck = ZM_WSCHECK_NONE;
+		zm_setBusyCheck(li, ZM_WSCHECK_NONE);
 		break;
 
 	case ZM_IMPLODEBY_CUR:
-		li->wscheck = ZM_WSCHECK_SKIPFIRST;
+		zm_setBusyCheck(li, ZM_WSCHECK_SKIPFIRST);
 		break;
 	}
 
 	#if ZM_DEBUG_LEVEL >= 1
-	ZM_D("init implode %s", zm_getImplodeFlagName(implodeby));
-	ZM_D("init implode %s", zm_getWSCheckFlagName(li->wscheck));
+	ZM_D("init implode %s", zm_implodeFlagName(implodeby));
+	ZM_D("init implode %s", zm_busyCheckFlagName(li->busycheck));
 	#endif
 
 
@@ -2413,30 +2411,31 @@ static void zm_deepStackPush(zm_VM *vm, zm_StateQueue *deepstack, zm_State *s)
 
 /*
  * Analize the busy-waiting state during implode lock.
- * There are three kind of close for each one the busy-waiting element
- * must be:
- * - close a subtask (zmCLOSE): the subtask should be suspended and so on
- *   all its child => no busy-waiting element (ALL)
- * - close current (zmTERM): current is set in busy-waiting (wait child close)
- *   his child should not be in waiting mode (SKIPFIRST)
- * - raise error (zmraise zmERROR): the exception path, since catch, is in
- *   busy-waiting (NONE) and child of each element should be not in waiting
- *   mode (ALL)
+ * There are three kind of close, each one with some possibile
+ * busy-waiting subtask:
+ * 1) zmCLOSE - close a subtask: the subtask and all its child should be
+ *    suspended. No busy-waiting tasks are expected  =>  CHECK_ALL
+ * 2) zmTERM - close current task: current is the only one set in busy-waiting
+ *    to wait child close  =>  CHECK_SKIPFIRST
+ * 3) zmERROR - raise error exception: the exception path, since catch, is in
+ *    busy-waiting (pre) but child of each element should not be
+ *    in waiting mode (post)  =>  pre: CHECK_NONE,  post: CHECK_ALL
  *
- * The only case that break these rule is when there is one (or more) continue
- * exception that have locked some child, so if there is a waiting state that
- * break the rule this check follow the comebacks since the state that contain
- * the continue-exception-ref (that will be used by zm_checkContinue).
+ * The only tasks that break these rules are the ones locked by a
+ * continue-exception. These subtasks are in busy-waiting mode.
+ * This function mark and follow the busy-waiting task comeback since
+ * the continue-exception header task. The header are saved in a stack
+ * to be analized by zm_checkContinue.
  */
-static void zm_checkWS(zm_VM *vm, zm_LockAndImplode* li, zm_State *s)
+static void zm_checkBusy(zm_VM *vm, zm_LockAndImplode* li, zm_State *s)
 {
 	ZM_D("check ws: %lx", s);
-	switch (li->wscheck) {
+	switch (li->busycheck) {
 	case ZM_WSCHECK_ALL:
 		break;
 
 	case ZM_WSCHECK_SKIPFIRST:
-		li->wscheck = ZM_WSCHECK_ALL;
+		zm_setBusyCheck(li, ZM_WSCHECK_ALL);
 	case ZM_WSCHECK_NONE:
 		return;
 	}
@@ -2472,7 +2471,7 @@ static void zm_checkWS(zm_VM *vm, zm_LockAndImplode* li, zm_State *s)
 
 
 /*
- * The continue-exception (found with zm_checkWS) must be must be completely
+ * The continue-exception (found with zm_checkBusy) must be must be completely
  * inside the implosion
  */
 static void zm_checkContinue(zm_VM *vm, zm_LockAndImplode *li)
@@ -2581,7 +2580,7 @@ static void zm_setImplodeLock(zm_VM *vm, zm_LockAndImplode* li, zm_State *state)
 		}
 	}
 
-	zm_checkWS(vm, li, state);
+	zm_checkBusy(vm, li, state);
 
 
 	if (zm_hasFlag(state, ZM_STATEFLAG_RUN)) {
@@ -3122,8 +3121,8 @@ static void zm_lockAndImplodeByException(zm_VM *vm, zm_State *state,
 	   should anyway reset it */
 	except->beforecatch = NULL;
 
-	/* enable ws check after lock the exception path */
-	zm_enableWS(&li);
+	/* enable busy check after lock the exception path */
+	zm_setBusyCheck(&li, ZM_WSCHECK_ALL);
 
 	ZM_D("lockAndImplodeByException - 3");
 
@@ -3145,7 +3144,7 @@ static void zm_lockAndImplodeBy(zm_VM *vm, zm_State *state, int implodeby,
 
 
 	ZM_D("lockAndImplodeBy - %s state = %lx",
-	     zm_getImplodeFlagName(implodeby), state);
+	     zm_implodeFlagName(implodeby), state);
 
 	if (zm_isTask(state)) {
 		/**** ptask ****/
@@ -4671,7 +4670,7 @@ static void zm_processUnexpected(zm_VM *vm, zm_State *state, zm_Yield result)
 	zm_fatalInit();
 	zm_fatalDo(ZM_FATAL_UNP, "WCMOP.U", vm,
 		   "Unknow combination of yield cmd = %s and pmode = %s",
-		   zm_getYieldCommandName(result.cmd), op);
+		   zm_yieldCommandName(result.cmd), op);
 }
 
 
@@ -4751,8 +4750,8 @@ static zm_Yield zm_runTask(zm_VM *vm, zm_Worker *worker, zm_State *state)
 /*
  * process normal mode yield
  */
-static int zm_normYield(zm_VM *vm, zm_Worker *worker, zm_State *state,
-                                                      zm_Yield result)
+static int zm_normalYield(zm_VM *vm, zm_Worker *worker, zm_State *state,
+                                                        zm_Yield result)
 {
 	int cmd =  ZM_B4(result.cmd);
 
@@ -4985,7 +4984,7 @@ static int zm_processState(zm_VM *vm, zm_Worker *worker, zm_State *state)
 		if (state->pmode == ZM_PMODE_CLOSE)
 			return zm_closeYield(vm, worker, state, y);
 
-		return zm_normYield(vm, worker, state, y);
+		return zm_normalYield(vm, worker, state, y);
 	}
 
 	case ZM_PMODE_END:
