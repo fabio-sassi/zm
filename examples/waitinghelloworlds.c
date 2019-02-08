@@ -49,16 +49,16 @@ int main() {
 		zm_resume(vm, s, NULL);
 	}
 
-	while(zm_go(vm, 1));
+	while(zm_go(vm, 1, NULL));
 
 	printf("\n ** no more to do...trigger event\n\n");
 
 	zm_trigger(vm, event, "worlds!");
 
-	while(zm_go(vm, 1));
+	while(zm_go(vm, 1, NULL));
 
 	zm_closeVM(vm);
-	zm_go(vm, 1000);
+	zm_go(vm, 1000, NULL);
 	zm_freeVM(vm);
 
 	zm_freeEvent(vm, event);

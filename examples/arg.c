@@ -29,21 +29,21 @@ int main()
 
 	printf("task 1: resume with 'Hello'\n");
 	zm_resume(vm, f, "Hello");
-	zm_go(vm, 5);
+	zm_go(vm, 5, NULL);
 
 	printf("task 1: resume with 'How are you?'\n");
 	zm_resume(vm, f, "How are you?");
-	zm_go(vm, 5);
+	zm_go(vm, 5, NULL);
 
 	printf("task 1: close\n");
 	zm_abort(vm, f);
-	zm_go(vm, 5);
+	zm_go(vm, 5, NULL);
 
 	printf("task 2: resume (but not process) with argument 'Bye'\n");
 	f = zm_newTasklet(vm, Foo, NULL);
 	zm_resume(vm, f, "Bye");
 
 	zm_closeVM(vm);
-	zm_go(vm, 100);
+	zm_go(vm, 100, NULL);
 	zm_freeVM(vm);
 }

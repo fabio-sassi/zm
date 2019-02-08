@@ -1,5 +1,7 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include <zm.h>
+
 
 int pint(void *value)
 {
@@ -91,13 +93,13 @@ int main()
 		printf("main: add %d\n", *nptr);
 		zm_resume(vm, a, nptr);
 		zm_resume(vm, b, nptr);
-		zm_go(vm, 20);
+		zm_go(vm, 20, NULL);
 	}
 
 	printf("main: end\n");
 
 	zm_closeVM(vm);
-	zm_go(vm, 100);
+	zm_go(vm, 100, NULL);
 	free(nptr);
 	zm_freeVM(vm);
 }

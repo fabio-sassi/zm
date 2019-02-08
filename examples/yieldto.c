@@ -58,16 +58,16 @@ int main() {
 	zm_resume(vm, t, NULL);
 
 	printf("#main: process all jobs...\n");
-	while(zm_go(vm, 1)) {}
+	while(zm_go(vm, 1, NULL)) {}
 
 	printf("#main: no more to do...sure?\n");
 	zm_resume(vm, t, NULL);
-	while(zm_go(vm, 1)) {}
+	while(zm_go(vm, 1, NULL)) {}
 
 	printf("#main: now there are no more to do\n");
 	zm_freeTask(vm, t);
 	zm_closeVM(vm);
-	zm_go(vm, 100);
+	zm_go(vm, 100, NULL);
 	zm_freeVM(vm);
 	return 0;
 }

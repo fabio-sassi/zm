@@ -48,9 +48,9 @@ int main() {
 	zm_VM *vm = zm_newVM("test VM");
 	zm_State *s = zm_newTasklet(vm, Bob, NULL);
 	zm_resume(vm, s, "Hi Bob, I'm main(), write something to John");
-	zm_go(vm, 100);
+	zm_go(vm, 100, NULL);
 	zm_closeVM(vm);
-	zm_go(vm, 1000);
+	zm_go(vm, 1000, NULL);
 	zm_freeVM(vm);
 	return 0;
 }

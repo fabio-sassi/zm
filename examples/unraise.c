@@ -11,16 +11,13 @@ ZMTASKDEF(task3)
 	ZMSTART
 
 	zmstate 1:
-	    printf("\t\ttask3: init\n");
-	    printf("\t\ttask3: raise continue exception (*)\n");
-	    zmraise zmCONTINUE(0, "continue-test", NULL) | 2;
+	    printf("    task3: init\n");
+	    printf("    task3: raise continue exception (*) ...\n\n");
+	    zmraise zmCONTINUE(0, "pause3", NULL) | 2;
 
 	zmstate 2:
-	    printf("\t\ttask3: (*) unraised ... OK\n");
-	    printf("\t\ttask3: msg = `%s`\n", (const char*)zmarg);
-
-	zmstate 3:
-	    printf("\t\ttask3: no more to do ... term\n");
+	    printf("    task3: (*) ... \n");
+	    printf("    task3: argument = `%s`\n", (const char*)zmarg);
 	    zmyield zmTERM;
 
 	ZMEND
@@ -33,12 +30,12 @@ ZMTASKDEF(task2)
 
 	zmstate 1:{
 	    zm_State *s = zmNewSubTasklet(task3, NULL);
-	    printf("\ttask2: init\n");
+	    printf("  task2: init\n");
 	    zmyield zmSUB(s, NULL) | 2;
 	}
 
 	zmstate 2:
-	    printf("\ttask2: term\n");
+	    printf("  task2: term\n");
 	    zmyield zmTERM;
 
 	ZMEND
@@ -60,21 +57,20 @@ ZMTASKDEF(task1)
 
 	zmstate 3: {
 	    zm_Exception* e = zmCatch();
-	    const char *msg = (e) ? e->msg : "no exception";
+		printf("task1: catch...\n");
+
 		if (e)
-		    zm_printException(NULL, e, 1);
-		printf("task1: catching...%s\n", msg);
+			printf("task1: catch exception='%s'\n", e->msg);
+		else
+			printf("task1: no-exception\n");
+
 	    zmyield 4;
 	}
 
 	zmstate 4:
-	    printf("task1: some operation\n");
-	    zmyield 5;
-
-	zmstate 5:
-	    /* this resume the subtask that raise zmCONTINUE: task3 */
-	    printf("task1: resuming continue-exception-block\n");
-	    zmyield zmUNRAISE(sub2, "hello-I-am-task1") | 2;
+	    /* this resume subtask that raise zmCONTINUE */
+	    printf("task1: resume continue-exception block\n\n");
+	    zmyield zmUNRAISE(sub2, "go_on3") | 2;
 
 	ZMEND
 }
@@ -82,9 +78,9 @@ ZMTASKDEF(task1)
 int main() {
 	zm_VM *vm = zm_newVM("test");
 	zm_resume(vm , zm_newTasklet(vm , task1, NULL), NULL);
-	zm_go(vm , 100);
+	zm_go(vm , 100, NULL);
 	zm_closeVM(vm);
-	zm_go(vm, 1000);
+	zm_go(vm, 1000, NULL);
 	zm_freeVM(vm);
 	return 0;
 }

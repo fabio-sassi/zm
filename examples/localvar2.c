@@ -1,6 +1,6 @@
-#include <zm.h>
 #include <stdio.h>
-
+#include <stdlib.h>
+#include <zm.h>
 
 ZMTASKDEF(foo) {
 	struct FooLocal {
@@ -35,8 +35,8 @@ int main()
 	int n0 = 4;
 	task = zm_newTasklet(vm , foo, &n0);
 	zm_resume(vm , task, NULL);
-	zm_go(vm, 5);
+	zm_go(vm, 5, NULL);
 	zm_closeVM(vm);
-	zm_go(vm, 100);
+	zm_go(vm, 100, NULL);
 	zm_freeVM(vm);
 }

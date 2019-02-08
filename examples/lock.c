@@ -157,14 +157,14 @@ int main() {
 			zm_resume(vm, s, NULL);
 		}
 
-		while(zm_go(vm, 1));
+		while(zm_go(vm, 1, NULL));
 		if (j == 0)
 			printf("\n ------------------ \n\n");
 	}
 
 
 	zm_closeVM(vm);
-	zm_go(vm, 1000);
+	zm_go(vm, 1000, NULL);
 	zm_freeVM(vm);
 
 	freeLock(vm, lock);

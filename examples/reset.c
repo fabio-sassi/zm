@@ -96,7 +96,7 @@ void go(zm_VM *vm, const char *prefix)
 {
 	int status;
 	do {
-		status = zm_go(vm, 100);
+		status = zm_go(vm, 100, NULL);
 		switch(status) {
 		case ZM_RUN_EXCEPTION: {
 			outgo(prefix, "CATCH EXCEPTION");

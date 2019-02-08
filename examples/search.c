@@ -30,8 +30,7 @@ typedef struct {
 
 /*
  * Write the name of the current task before the message.
- * The task name is indent in relation to the data-tree-deep
- * of the task.
+ * The task name is indent as its execution-stack deep.
  */
 void zout(const char *m, ...)
 {
@@ -89,7 +88,6 @@ ZMTASKDEF(IterMatch)
 		self->len++;
 
 	    zmyield SEARCH;
-
 
 	zmstate ENDMATCH:
 		/* raise a continue exception, Upper-task will resume only the
@@ -242,7 +240,7 @@ ZMTASKDEF(Upper)
 
 	zmstate MATCH: {
 	    zm_Exception* e = zmCatch();
-	    zm_State *c = zmContinueBlock(e);
+	    zm_State *c = zmContinueHead(e);
 		int i;
 
 		/* search the child that raise the continue-exception */
@@ -329,7 +327,7 @@ int main(int argc, char *argv[]) {
 	patternlen = strlen(pattern);
 
 	zm_resume(vm , zm_newTasklet(vm, Upper, NULL), NULL);
-	while(zm_go(vm , 100));
+	while(zm_go(vm , 100, NULL));
 
 	printf("\n---------------------------------\n");
 	printf("\nsource:\n%s\n", text);
@@ -338,7 +336,7 @@ int main(int argc, char *argv[]) {
 	free(utext);
 
 	zm_closeVM(vm);
-	zm_go(vm, 1000);
+	zm_go(vm, 1000, NULL);
 	zm_freeVM(vm);
 	return 0;
 }

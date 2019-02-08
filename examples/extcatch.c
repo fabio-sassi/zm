@@ -64,7 +64,7 @@ void go(zm_VM *vm)
 {
 	int status;
 	do {
-		status = zm_go(vm, 100);
+		status = zm_go(vm, 100, NULL);
 		switch(status) {
 		case ZM_RUN_EXCEPTION: {
 			out("zm_go: CATCH EXCEPTION");

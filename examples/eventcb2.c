@@ -131,7 +131,7 @@ int main() {
 	zm_resume(vm, s4, NULL);
 	zm_resume(vm, s5, NULL);
 
-	while(zm_go(vm, 1));
+	while(zm_go(vm, 1, NULL));
 
 	printf("\n* trigger event:\n");
 	zm_trigger(vm, event, "aa");
@@ -143,11 +143,11 @@ int main() {
 
 
 	printf("\n\n");
-	while(zm_go(vm, 1));
+	while(zm_go(vm, 1, NULL));
 
 	printf("\n* close all tasks:\n\n");
 	zm_closeVM(vm);
-	zm_go(vm, 1000);
+	zm_go(vm, 1000, NULL);
 	zm_freeVM(vm);
 
 	printf("\n* free event:\n\n");

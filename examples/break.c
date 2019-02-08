@@ -67,7 +67,7 @@ int main() {
 		zm_resume(vm, s, NULL);
 	}
 
-	while((status = zm_go(vm, 1000))) {
+	while((status = zm_go(vm, 1000, NULL))) {
 		if (status && ZM_RUN_BREAK) {
 			printf("++ restore water\n");
 			water = 10;
@@ -75,7 +75,7 @@ int main() {
 	}
 
 	zm_closeVM(vm);
-	zm_go(vm, 1000);
+	zm_go(vm, 1000, NULL);
 	zm_freeVM(vm);
 
 	return 0;

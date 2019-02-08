@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2018, Fabio Sassi <fabio dot s81 at gmail dot com>
+ * Copyright (c) 2015-2019, Fabio Sassi <fabio dot s81 at gmail dot com>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -33,18 +33,12 @@
 #define __ZM_VM_H__
 
 
-#define ZM_VERSION "0.1.3"
+#define ZM_VERSION "0.1.4"
 
-#include <string.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <stdarg.h>
 #ifndef ZM_NO_STDINT_H
 	#include <stdint.h>
-#endif
-
-#ifndef bool
-	#define bool int
 #endif
 
 #ifndef false
@@ -59,7 +53,14 @@
 
 #define ZM_CHECK_CONSISTENCY 1
 
-#define ZM_PRINTSTATE_MAXDEEP 100
+#ifndef ZM_PRINTSTATE_MAXDEEP
+	#define ZM_PRINTSTATE_MAXDEEP 100
+#endif
+
+#ifndef ZM_CALLERSTACK_MAXDEEP
+	#define ZM_CALLERSTACK_MAXDEEP 200000
+#endif
+
 
 #ifndef ZM_DEBUG_LEVEL
 	#define ZM_DEBUG_LEVEL 0
@@ -151,32 +152,32 @@ enum {
 #define ZM_TERM 255
 #define ZM_RESERVED 251
 
-/* *** State Flag *** */
+/* *** State Flags *** */
 
 
 /* bit: 1 - 0: suspended  1: running */
-#define ZM_STATEFLAG_RUN 1
+#define ZM_STATE_RUN 1
 
 /* bit: 2 - 0: suspend - 1: waiting */
-#define ZM_STATEFLAG_WAITING 2
+#define ZM_STATE_WAITING 2
 
 /* bit: 3 - 1: locked by an event */
-#define ZM_STATEFLAG_EVENTLOCKED 4
+#define ZM_STATE_EVENTLOCKED 4
 
 /* bit: 4 - state that catch an exception */
-#define ZM_STATEFLAG_CATCH 8
+#define ZM_STATE_CATCH 8
 
 /* bit: 5 - abort locked */
-#define ZM_STATEFLAG_IMPLOSIONLOCK  16
+#define ZM_STATE_IMPLOSIONLOCK  16
 
 /* bit: 6 - 0: manual-free 1: auto-free */
-#define ZM_STATEFLAG_AUTOFREE  32
+#define ZM_STATE_AUTOFREE  32
 
 /* bit: 7 - continue exception mark */
-#define ZM_STATEFLAG_CONTINUEMARK 64
+#define ZM_STATE_CONTINUEMARK 64
 
 /* bit: 8 - unused */
-#define ZM_STATEFLAG_UNUSED 128
+#define ZM_STATE_UNUSED 128
 
 
 
@@ -255,14 +256,7 @@ typedef struct {
 /* * State * */
 
 struct zm_State_ {
-	uint8_t flag;
-
-	zm_Parent *parent;
-
-	struct {
-		zm_State *next;
-		zm_State *prev;
-	} siblings;
+	int flag;
 
 	struct {
 		uint8_t resume;
@@ -271,6 +265,14 @@ struct zm_State_ {
 	} on;
 
 	uint8_t pmode;
+
+	zm_Parent *parent;
+
+	struct {
+		zm_State *next;
+		zm_State *prev;
+	} siblings;
+
 
 	void *data;
 	void *rearg; /* resume arguments */
@@ -327,10 +329,10 @@ typedef int (*zm_event_cb)(zm_VM *vm,
 
 
 struct zm_Event_ {
-	uint32_t flag;
+	int flag;
+	int count;
 
 	zm_EventBinder *bindlist;
-	size_t count;
 
 	zm_event_cb evcb;
 
@@ -365,28 +367,30 @@ struct zm_Trace_ {
 
 
 struct zm_Exception_ {
-	int kind;
-	int elock;
+	short kind;
+	short elock;
 
 	/* ** user data*/
 	int code;
 	const char *msg;
 	void *data;
 
+	/* beforecatch is set by zm_implode for abort-exception or by
+	 * getLastBeforeCatch for continue-exception */
 	zm_State *beforecatch;
 
-	zm_State *raisestate; /*used in continue #CONTINUE_EXCEPT */
+	/*used in continue #CONTINUE_EXCEPT */
+	zm_State *raisestate;
 
 	zm_Trace *etrace;
 };
 
 
-#define ZM_EXCEPTION_ABORT 1
-#define ZM_EXCEPTION_CONTINUE 2
-#define ZM_EXCEPTION_CONTINUE2 3
-#define ZM_EXCEPTION_STARTIMPLOSION 4
-#define ZM_EXCEPTION_UNCAUGHT 5
-
+#define ZM_EXCEPTION_ABORT              1
+#define ZM_EXCEPTION_CONTINUE           2
+#define ZM_EXCEPTION_CONTINUEHEAD       3
+#define ZM_EXCEPTION_STARTIMPLOSION     4
+#define ZM_EXCEPTION_UNCAUGHT           5
 
 /* * Machine: avaible in global scope ** */
 
@@ -405,14 +409,14 @@ struct zm_Exception_ {
  *                   to the worker X and to vm.
  *
  * In a vm there is only one worker for each machine. An associative array
- * (mhw) inside vm allow to match a machine with relative zm_Worker.
+ * (mwh) inside vm allow to match a machine with relative zm_Worker.
  *
  * In this way user can use global machine symbol as the reference to
  * the relative zm_Worker instance (for example to instance new task).
 */
 typedef struct {
 	int id;
-	zm_yield_t (*fun)(zm_VM* zm, uint8_t zmop, void *zmarg);
+	zm_yield_t (*fun)(zm_VM* zm, int zmop, void *zmarg);
 	const char* name;
 } zm_Machine;
 
@@ -449,8 +453,6 @@ typedef void (*zm_process_cb)(zm_VM* vm, zm_Machine* m, zm_State* s, int post);
 
 
 struct zm_VM_ {
-	uint8_t flag;
-
 	const char *name;
 	void *data;
 
@@ -469,7 +471,7 @@ struct zm_VM_ {
 		/* simple associative array: key=machine->id - value=worker*/
 		zm_Worker **hlist;
 		size_t len;
-	} mhw;
+	} mwh;
 
 	/* active workers pointer are stored in a ring linked list*/
 	zm_Worker *workercursor;
@@ -488,66 +490,20 @@ struct zm_VM_ {
 /* * Print Utility * */
 
 
-struct zm_Print_ {
+typedef struct {
 	FILE *file;
 	int indent;
 	struct {
 		char *data;
-		size_t used;
-		size_t size;
+		int used;
+		int size;
 	} buffer;
-};
-
-typedef struct zm_Print_ zm_Print;
+} zm_Print;
 
 
-typedef struct {
-	int by;
-	int busycheck;
-
-	size_t fromdeep;
-	size_t todeep;
-	int count;
-
-	zm_StateQueue *deepstack;
-	zm_StateQueue *lockstack;
-	zm_StateQueue *econtinue;
-
-	struct {
-		int count;
-		zm_Exception *exception;
-		zm_State *state;
-	} justlock;
-
-	zm_State *chaintail;
-	zm_State *running;
 
 
-	const char *refname;
-	const char *filename;
-	int nline;
-} zm_LockAndImplode;
-
-
-typedef enum {
-	/* unexpected error */
-	ZM_FATAL_UN,
-	/* unexpected error in process task */
-	ZM_FATAL_UNP,
-	/* generic error */
-	ZM_FATAL_ERROR,
-	/* generic user code error (inside task) */
-	ZM_FATAL_UCODE,
-	/* error using yield */
-	ZM_FATAL_YIELD,
-	/* sync error */
-	ZM_FATAL_SYNC,
-	/* uncaught */
-	ZM_FATAL_NOCATCH
-} zm_kfatal_t;
-
-
-typedef void (*zm_tlock_cb)(void *data, int lock);
+typedef void (*zm_tlock_cb)(FILE *f, void *data, int lock);
 
 #define zm_hasFlag(s, FLAG)   ((s)->flag & (FLAG))
 #define zm_hasntFlag(s, FLAG)   (((s)->flag ^ (FLAG)) & (FLAG))
@@ -560,12 +516,12 @@ typedef void (*zm_tlock_cb)(void *data, int lock);
 /* NOTE: zm_isSomething: only external library use.
          zm_hasFlag: internal use
  */
-#define zm_isBusy(s)       zm_hasFlag(s, ZM_STATEFLAG_WAITING)
-#define zm_isRunning(s)    zm_hasFlag(s, ZM_STATEFLAG_RUN)
-#define zm_isntRunning(s)  zm_hasntFlag(s, ZM_STATEFLAG_RUN)
+#define zm_isBusy(s)       zm_hasFlag(s, ZM_STATE_WAITING)
+#define zm_isRunning(s)    zm_hasFlag(s, ZM_STATE_RUN)
+#define zm_isntRunning(s)  zm_hasntFlag(s, ZM_STATE_RUN)
 #define zm_isSuspended(s)  ((zm_isntRunning(s)) && (!zm_isBusy(s)))
-#define zm_isAlive(s)      zm_hasntFlag(s, ZM_STATEFLAG_IMPLOSIONLOCK)
-#define zm_isntAlive(s)    zm_hasFlag(s, ZM_STATEFLAG_IMPLOSIONLOCK)
+#define zm_isAlive(s)      zm_hasntFlag(s, ZM_STATE_IMPLOSIONLOCK)
+#define zm_isntAlive(s)    zm_hasFlag(s, ZM_STATE_IMPLOSIONLOCK)
 
 #define zm_isTask(s)    ((s)->parent == NULL)
 #define zm_isSubTask(s) ((s)->parent != NULL)
@@ -574,8 +530,8 @@ typedef void (*zm_tlock_cb)(void *data, int lock);
         izm_addTask((vm), (m), (data), false, 0,  __FILE__, __LINE__)
 
 #define zm_newTasklet(vm, m, data)                                            \
-        izm_addTask((vm), (m), (data), false, ZM_STATEFLAG_AUTOFREE,          \
-                                                 __FILE__, __LINE__)
+        izm_addTask((vm), (m), (data), false, ZM_STATE_AUTOFREE,              \
+                                             __FILE__, __LINE__)
 
 #define zm_resume(vm, x, arg) izm_resume("zm_resume", (vm), (x), (arg),       \
                                               true, __FILE__, __LINE__)
@@ -596,8 +552,8 @@ typedef void (*zm_tlock_cb)(void *data, int lock);
         izm_addTask((vm), (m), (data), true, 0, __FILE__, __LINE__)
 
 #define zmNewSubTasklet(m, data)                                              \
-        izm_addTask((vm), (m), (data), true, ZM_STATEFLAG_AUTOFREE,           \
-                                                __FILE__, __LINE__)
+        izm_addTask((vm), (m), (data), true, ZM_STATE_AUTOFREE,               \
+                                            __FILE__, __LINE__)
 
 #define zmNewSub zmNewSubTask
 #define zmNewSu  zmNewSubTasklet
@@ -625,12 +581,13 @@ typedef void (*zm_tlock_cb)(void *data, int lock);
 
 /* ** exceptions ** */
 #define zmABORT(ecode, msg, data)                                             \
-        izmEXCEPTION(vm, true, (ecode), (msg), (void*)(data),                 \
-                                          __FILE__, __LINE__)
+        izmEXCEPT(vm, ZM_EXCEPTION_ABORT, (ecode), (msg), (data),             \
+                                              __FILE__, __LINE__)
 
 #define zmCONTINUE(ecode, msg, data)                                          \
-        izmEXCEPTION(vm, false, (ecode), (msg), (void*)(data),                \
-                                           __FILE__, __LINE__)
+        izmEXCEPT(vm, ZM_EXCEPTION_CONTINUE, (ecode), (msg), (data),          \
+                                                 __FILE__, __LINE__)
+
 
 #define zmDROP(e) izmDROP(vm, (e), __FILE__, __LINE__)
 
@@ -639,7 +596,7 @@ typedef void (*zm_tlock_cb)(void *data, int lock);
 #define zmUNRAISE(s, arg)     izmUNRAISE(vm, (s), (arg), __FILE__, __LINE__)
 #define zmSSUB(x, arg)        izmSUB(vm, (x), (arg), true, __FILE__, __LINE__)
 #define zmCALLER              ZM_TASK_SUSPEND_AND_RESUME_CALLER
-#define zmSU(task, data, arg) zmSUB(zmNewSu((task), (data)), (arg))
+#define zmSU(machine, data, arg) zmSUB(zmNewSu((machine), (data)), (arg))
 
 
 /* ** task ** */
@@ -663,8 +620,8 @@ typedef void (*zm_tlock_cb)(void *data, int lock);
 #define zmUNBIND(x)  ZM_B3(x)
 
 /* Inside operator API */
-#define zmyield    return zmyieldtrace(vm, __FILE__, __LINE__) |
-#define zmraise    return 0 |
+#define zmyield    return izmYieldTrace(vm, __FILE__, __LINE__) |
+#define zmraise    return izmYieldTrace(vm, __FILE__, __LINE__) |
 #define zmstate    case
 #define zmdata     (zm_getCurrent(vm)->data)
 #define zmresult   (izmResult(vm, __FILE__, __LINE__)->rearg)
@@ -672,17 +629,17 @@ typedef void (*zm_tlock_cb)(void *data, int lock);
 
 /* Task def API*/
 #define ZMTASKDEF(x)                                                          \
-    zm_yield_t x ## __function__(zm_VM*, uint8_t zmop, void* zmarg);          \
-    zm_Machine x ## __byval__ = {-1, x ## __function__, #x};                  \
-    zm_Machine* x = &x ## __byval__;                                          \
-    zm_yield_t (x ## __function__)(zm_VM* vm, uint8_t zmop, void *zmarg)      \
+    zm_yield_t (x ## __function__)(zm_VM*, int zmop, void* zmarg);            \
+    zm_Machine (x ## __byval__) = {-1, (x ## __function__), #x};              \
+    zm_Machine* x = &(x ## __byval__);                                        \
+    zm_yield_t (x ## __function__)(zm_VM* vm, int zmop, void *zmarg)          \
     {
 
 
-#define ZMTASKLN(base, x)                                                     \
-    zm_yield_t base ## __function__(zm_VM*, uint8_t, void*);           \
-    zm_Machine x ## __byval__ = {-1, base ## __function__, #x};               \
-    zm_Machine* x = &x ## __byval__                                           \
+#define ZMTASKDEFCOPY(dest, src)                                              \
+    zm_yield_t (src ## __function__)(zm_VM*, int zmop, void* zmarg);          \
+    zm_Machine (dest ## __byval__) = {-1, (src ## __function__), #dest};      \
+    zm_Machine* dest = &(dest ## __byval__)                                   \
 
 
 
@@ -696,15 +653,13 @@ typedef void (*zm_tlock_cb)(void *data, int lock);
             else if ( zmop == ZM_INIT )                                       \
                 zmyield zmDONE;                                               \
                                                                               \
-            zm_fatalUndefState(vm, __FILE__, __LINE__);                       \
+            zm_fatalNoYield(vm, false, __FILE__, __LINE__);                   \
             return 0;                                                         \
 
 
 #define ZMAFTERSWITCH                                                         \
-        zm_fatalOn(NULL, __FILE__, __LINE__);                                 \
-        zm_fatalDo(ZM_FATAL_YIELD, "UNDEFBREAKSTATE.1", vm,                   \
-                "break in main zmstate-switch (this happend using a "         \
-                "`break` inside a zmstate in a wrong way)");                  \
+        zm_fatalNoYield(vm, true, __FILE__, __LINE__);                        \
+
 
 #define ZMSWITCHEND                                                           \
         ZMSWITCHDEFAULT                                                       \
@@ -744,13 +699,8 @@ char* zm_popPrintBuffer(zm_Print *out, size_t *size);
 void zm_removePrintBuffer(zm_Print *out);
 
 /* report fatal utility */
-typedef void (*zm_fatal_cb)(zm_VM *vm, char *msg, void *data);
-
-void zm_fatalInit();
-void zm_fatalOn(const char *refname, const char *fn, int nl);
-void zm_fatalDo(zm_kfatal_t kind, const char *ecode, zm_VM *vm,
-                                          const char *fmt, ...);
-void zm_fatalUndefState(zm_VM *vm, const char *fn, int nl);
+typedef void (*zm_fatal_cb)(const char *zname, void *zdata, void *data);
+void zm_fatalNoYield(zm_VM *vm, int out, const char *fn, int n);
 void zm_atFatal(zm_fatal_cb cb, void *data);
 
 /* generic queue state */
@@ -764,10 +714,12 @@ zm_State* zm_queuePop0(zm_StateQueue* queue, void** data);
 
 /* print vm structure */
 void zm_printStateCompact(zm_Print *out, zm_State *s);
-void zm_printState(zm_Print *out, zm_State *s);
+void zm_printState(zm_Print *out, zm_VM *vm, zm_State *s);
+void zm_printInfoVM(zm_Print *out, zm_VM *vm);
+void zm_printDataTree(zm_Print *out, zm_VM *vm);
+void zm_printCallerStack(zm_Print *out, zm_VM *vm);
 void zm_printTasks(zm_Print *out, zm_VM *vm);
 void zm_printVM(zm_Print *out, zm_VM *vm);
-void zm_printTreeVM(zm_Print *out, zm_VM *vm);
 
 
 /* yield operator */
@@ -776,18 +728,18 @@ zm_yield_t izmRESET(zm_VM* vm, int n, const char* filename, int nline);
 
 zm_yield_t izmCLOSE(zm_VM *vm, zm_State *state, const char *fn, int nl);
 zm_yield_t izmDROP(zm_VM *vm, zm_Exception* e, const char *fn, int nl);
-zm_yield_t izmEXCEPTION(zm_VM *vm, bool abort, int ecode, const char *msg,
-                                       void *data, const char *fn, int nl);
+zm_yield_t izmEXCEPT(zm_VM *vm, int kind, int ecode, const char *msg,
+                         void* data, const char *filename, int nline);
 
 zm_yield_t izmUNRAISE(zm_VM *vm, zm_State* state, void *argument,
                                           const char *fn, int nl);
 
-zm_yield_t izmSUB(zm_VM* vm, zm_State *s, void*argument, bool allowunraise,
-                                                    const char *fn, int nl);
+zm_yield_t izmSUB(zm_VM* vm, zm_State *s, void* argument, int allowunraise,
+                                                   const char *fn, int nl);
 
 zm_yield_t izmEVENT(zm_VM* vm, zm_Event *e, const char *fn, int nl);
 
-int zmyieldtrace(zm_VM* vm, const char *fn, int nl);
+int izmYieldTrace(zm_VM* vm, const char *fn, int nl);
 
 /* inside task functions */
 
@@ -809,10 +761,14 @@ void* izmGetRootData(zm_VM *vm);
 void* izmGetCallerData(zm_VM *vm);
 
 
-#define zmContinueBlock(e)                                                     \
-       izmContinueBlock(vm, (e), __FILE__, __LINE__);
+#define zmContinueHead(e)                                                     \
+       izmContinueHead(vm, (e), __FILE__, __LINE__);
 
-zm_State *izmContinueBlock(zm_VM* vm, zm_Exception *e, const char *fn, int nl);
+#define zmContinueTail(e)                                                     \
+       izmContinueTail(vm, (e), __FILE__, __LINE__);
+
+zm_State *izmContinueHead(zm_VM* vm, zm_Exception *e, const char *fn, int nl);
+zm_State *izmContinueTail(zm_VM* vm, zm_Exception *e, const char *fn, int nl);
 
 
 /* event */
@@ -832,8 +788,8 @@ size_t zm_unbindAll(zm_VM *vm, zm_Event *event, void *argument);
 zm_yield_t izm_resume(const char *fname, zm_VM* vm, zm_State *s, void *argument,
                                      int iter, const char *filename, int nline);
 
-zm_State* izm_addTask(zm_VM *vm, zm_Machine *machine, void *data, bool sub,
-                                      uint8_t flag, const char *fn, int nl);
+zm_State* izm_addTask(zm_VM *vm, zm_Machine *machine, void *data, int sub,
+                                        int flag, const char *fn, int nl);
 
 int zm_freeTask(zm_VM *vm, zm_State *state);
 
@@ -873,9 +829,7 @@ void zm_enableMT(zm_tlock_cb cb, void* data);
 
 /* process */
 void zm_break(zm_VM* vm);
-#define zm_mGo zm_goMachine
-int zm_goMachine(zm_VM* vm, zm_Machine* m, unsigned int ncycle);
-int zm_go(zm_VM* vm, unsigned int ncycle);
+int zm_go(zm_VM* vm, unsigned int ncycle, zm_Machine* machine);
 
 
 
