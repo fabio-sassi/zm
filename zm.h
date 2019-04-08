@@ -33,7 +33,7 @@
 #define __ZM_VM_H__
 
 
-#define ZM_VERSION "0.1.4"
+#define ZM_VERSION "0.1.5"
 
 #include <stdio.h>
 #include <stdarg.h>
