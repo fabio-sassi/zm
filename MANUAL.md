@@ -187,7 +187,7 @@ a task-class, `s1` a task instance and `while` is the scheduler.
 
 # Tasks:
 
-In ZM there is two kind of task: **ptask** or *process-task*
+In ZM there are two kind of task: **ptask** or *process-task*
 and **subtask**. 
 
 The term **task** is used in this documentation to identify 

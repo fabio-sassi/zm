@@ -856,7 +856,7 @@ static const char* zm_getModeName(zm_State *s, int compact)
 
 static void zm_printTraceElement(zm_Print *out, zm_Trace *t)
 {
-	zm_print(out, "task-id: %lx\t\n", t->taskid);
+	zm_print(out, "task-id: %zx\t\n", t->taskid);
 	zm_print(out, "machine: %s", t->machinename);
 
 	if (t->on)
@@ -932,22 +932,22 @@ static void zm_printStateException(zm_Print *out, zm_VM *vm, zm_State *estate)
 
 
 		zm_print(out, "ecode: %d\n", e->code);
-		zm_print(out, "data: [ref: %lx]\n", e->data);
-		zm_print(out, "beforecatch: [ref: %lx]\n", e->beforecatch);
+		zm_print(out, "data: [ref: %zx]\n", e->data);
+		zm_print(out, "beforecatch: [ref: %zx]\n", e->beforecatch);
 	}
 
 	if (rse) {
 		zm_addIndent(out, 3);
 
-		zm_print(out, "raise state: [ref: %lx]%s", e->raisestate,
+		zm_print(out, "raise state: [ref: %zx]%s", e->raisestate,
 		          (e->raisestate == estate) ?  " (self)" : "");
 
 		zm_addIndent(out, -3);
 	}
 
 	if (imp) {
-		zm_print(out, "implosion start: [ref: %lx]\n", e->raisestate);
-		zm_print(out, "saved exception: [ref: %lx]\n", e->data);
+		zm_print(out, "implosion start: [ref: %zx]\n", e->raisestate);
+		zm_print(out, "saved exception: [ref: %zx]\n", e->data);
 	}
 
 	if (e->etrace) {
@@ -1016,9 +1016,9 @@ void zm_printStateCompact(zm_Print *out, zm_State *s)
 	ZM_DEFAULT_STDOUT(out);
 
 	#ifdef ZM_DEBUG_MACHINENAME
-		zm_print(out, "%s-%lx ", s->debugmachinename, s);
+		zm_print(out, "%s-%zx ", s->debugmachinename, s);
 	#else
-		zm_print(out, "%lx ", s);
+		zm_print(out, "%zx ", s);
 	#endif
 
 
@@ -1030,13 +1030,13 @@ void zm_printStateCompact(zm_Print *out, zm_State *s)
 
 
 	if (zm_hasCaller(s))
-		zm_iprint(out, "caller:%lx ", zm_caller(s));
+		zm_iprint(out, "caller:%zx ", zm_caller(s));
 
 	if (s->pmode != ZM_PMODE_NORMAL)
 		zm_iprint(out, "%s ", zm_getModeName(s, true));
 
 	if (s->exception)
-		zm_iprint(out, "!%lx", s->exception);
+		zm_iprint(out, "!%zx", s->exception);
 
 	zm_iprint(out, "\n");
 }
@@ -1054,20 +1054,20 @@ void zm_printState(zm_Print *out, zm_VM *vm, zm_State *s)
 
 	if (zm_isSubTask(s)) {
 		size_t i;
-		zm_print(out, "caller: [ref: %lx]\n", zm_caller(s));
+		zm_print(out, "caller: [ref: %zx]\n", zm_caller(s));
 
 		zm_print(out, "parent: (subtask) stacksize = %d\n",zm_deep(s));
 
 		for (i = 0; i < zm_deep(s); i++) {
-			zm_print(out, "  parent[%d] = [ref: %lx]\n", i,
+			zm_print(out, "  parent[%d] = [ref: %zx]\n", i,
 			         s->parent->stack[i]);
 		}
 	} else {
 		zm_print(out, "parent: NULL (ptask)\n");
 	}
 
-	zm_print(out, "subtasks: [ref: %lx]\n", s->subtasks);
-	zm_print(out, "siblings: prev=[ref: %lx], next=[ref: %lx]\n",
+	zm_print(out, "subtasks: [ref: %zx]\n", s->subtasks);
+	zm_print(out, "siblings: prev=[ref: %zx], next=[ref: %zx]\n",
 	         s->siblings.prev, s->siblings.next);
 
 	zm_print(out, "on: resume = %d, iter = %d, catch = %d\n",
@@ -1095,13 +1095,13 @@ void zm_printState(zm_Print *out, zm_VM *vm, zm_State *s)
 				  zm_workerName((zm_Worker*)s->next));
 		}
 	}
-	zm_iprint(out, " [ref: %lx]\n", s->next);
+	zm_iprint(out, " [ref: %zx]\n", s->next);
 
 
 	if (!s->exception)
 		return;
 
-	zm_print(out, "exception: [ref: %lx]\n", s->exception);
+	zm_print(out, "exception: [ref: %zx]\n", s->exception);
 
 	zm_addIndent(out, 2);
 
@@ -1120,9 +1120,9 @@ static void zm_printWorker(zm_Print *out, zm_VM *vm, zm_Worker *w)
 	zm_print(out, "nstate: %d\n", w->nstate);
 	zm_print(out, "cyclestep: %d\n", w->cyclestep);
 
-	zm_print(out, "states.first: [ref: %lx]\n", w->states.first);
-	zm_print(out, "states.current: [ref: %lx]\n", w->states.current);
-	zm_print(out, "states.previous: [ref: %lx]\n", w->states.previous);
+	zm_print(out, "states.first: [ref: %zx]\n", w->states.first);
+	zm_print(out, "states.current: [ref: %zx]\n", w->states.current);
+	zm_print(out, "states.previous: [ref: %zx]\n", w->states.previous);
 
 	#ifdef ZM_CHECK_CONSISTENCY
 	if ((w->states.current == w->states.previous) &&
@@ -1134,7 +1134,7 @@ static void zm_printWorker(zm_Print *out, zm_VM *vm, zm_Worker *w)
 	#endif
 
 	if (w->next) {
-		zm_print(out, "next (worker): %s-%lx\n",
+		zm_print(out, "next (worker): %s-%zx\n",
 		         w->next->machine->name, w->next);
 	} else {
 			zm_print(out, "next (worker): NULL\n");
@@ -1147,7 +1147,7 @@ static void zm_printWorker(zm_Print *out, zm_VM *vm, zm_Worker *w)
 		do {
 			zm_print(out, "\n");
 			zm_print(out, "   - state: %d", i + 1);
-			zm_print(out, " [ref: %lx]\n", state);
+			zm_print(out, " [ref: %zx]\n", state);
 
 			zm_addIndent(out, 5);
 			zm_printState(out, vm, state);
@@ -1186,7 +1186,7 @@ void zm_printInfoVM(zm_Print *out, zm_VM *vm)
 	zm_print(out, "session.fixedworker: %d\n", vm->session.fixedworker);
 
 	if (vm->nworker) {
-		zm_print(out, "workercursor: %s-%lx\n",
+		zm_print(out, "workercursor: %s-%zx\n",
 		         vm->workercursor->machine->name,
 		         vm->workercursor);
 	}
@@ -1221,7 +1221,7 @@ static void zm_printStateRecursive(zm_Print *out, zm_VM *vm, zm_State *s,
 
 	do {
 		zm_print(out, "\n");
-		zm_print(out, "   - substate (deep=%d): %d [ref: %lx]\n",
+		zm_print(out, "   - substate (deep=%d): %d [ref: %zx]\n",
 		         deep, i++, s);
 		zm_addIndent(out, 5);
 		zm_printStateRecursive(out, vm, s, deep+1);
@@ -1282,7 +1282,7 @@ static void zm_checkFoundCaller(zm_VM *vm, zm_StateQueue *qiter,
 		zm_fatalInit(vm, NULL);
 		zm_fatalDo(ZM_FATAL_U2, "FINDCALL.NN",
 				   "findCaller: found more than one "
-				   "(%d) caller for task %lx",
+				   "(%d) caller for task %zx",
 				   nmatch, state);
 	}
 }
@@ -1344,7 +1344,7 @@ static void zm_printCheckConsistency(zm_VM *vm)
 			zm_fatalDo(ZM_FATAL_U2, "PRNTTASK.RC",
 			           "zm_printTask: more than one task "
 			           "run in the same exec-context "
-			           "(context: [ref %lx] count: %d)",
+			           "(context: [ref %zx] count: %d)",
 			           state, runcount);
 		}
 
@@ -1371,7 +1371,7 @@ void zm_printTasks(zm_Print *out, zm_VM *vm)
 	zm_addIndent(out, 2);
 	do {
 		zm_print(out, "\n");
-		zm_print(out, "-TASK: %d [ref %lx]\n", i++, state);
+		zm_print(out, "-TASK: %d [ref %zx]\n", i++, state);
 
 		zm_addIndent(out, 1);
 
@@ -1579,7 +1579,7 @@ void zm_printCallerStack(zm_Print *out, zm_VM *vm)
 
 		zm_fatalInit(vm, NULL);
 		zm_fatalDo(ZM_FATAL_U2, "PRNCALSTK.CL",
-			   "unclassified state %lx", s);
+			   "unclassified state %zx", s);
 	}
 
 	zm_queueFree(q);
@@ -1602,7 +1602,7 @@ void zm_printActiveWorkers(zm_Print *out, zm_VM *vm)
 		do {
 			zm_print(out, "\n");
 			zm_print(out, " - worker %d: ", i++);
-			zm_print(out, "%s-%lx\n", w->machine->name, w);
+			zm_print(out, "%s-%zx\n", w->machine->name, w);
 
 			zm_addIndent(out, 3);
 			zm_printWorker(out, vm, w);
@@ -1672,7 +1672,7 @@ void zm_printException(zm_Print *out, zm_Exception *e, int trace)
 	if (e->etrace) {
 		zm_Trace *t = zm_getTraceHead(e->etrace);
 
-		zm_print(out, " in: %s-%lx (file: %s at line: %d)\n\n",
+		zm_print(out, " in: %s-%zx (file: %s at line: %d)\n\n",
 				  t->machinename,
 				  t->taskid,
 				  t->filename,
@@ -1932,7 +1932,7 @@ static int zm_hasSameContext(zm_State *s1, zm_State *s2)
 
 static void zm_addWorker(zm_VM *vm, zm_Worker *w)
 {
-	ZM_D("zm_addWorker [%lx] %s", w, w->machine->name);
+	ZM_D("zm_addWorker [%zx] %s", w, w->machine->name);
 	if (vm->nworker == 0) {
 		vm->workercursor = w;
 		w->next = w->prev = w;
@@ -1954,7 +1954,7 @@ static void zm_addWorker(zm_VM *vm, zm_Worker *w)
  */
 static void zm_unlinkWorker(zm_VM *vm, zm_Worker *w)
 {
-	ZM_D("unlinkWorker [%lx] %s", w, w->machine->name);
+	ZM_D("unlinkWorker [%zx] %s", w, w->machine->name);
 
 	if (vm->nworker == 1) {
 		/* only one element*/
@@ -2144,7 +2144,7 @@ static void zm_resumeCaller(zm_VM *vm, zm_State *sub, int iter)
 {
 	zm_State *c;
 
-	ZM_D("resumeCaller: state = %lx, iter = %d", sub, iter);
+	ZM_D("resumeCaller: state = %zx, iter = %d", sub, iter);
 
 	c = zm_caller(sub);
 
@@ -2224,7 +2224,7 @@ static void zm_suspendByYield(zm_VM* vm, zm_Yield ms, int waiting)
 
 	zm_State *state = zm_getCurrentState(vm);
 
-	ZM_D("suspendCurrentState -- state : [ref %lx]", state);
+	ZM_D("suspendCurrentState -- state : [ref %zx]", state);
 
 	if (ms.resume >= ZM_RESERVED)
 		zm_zmstateReserved(vm, ms.resume, "YSU.RS");
@@ -2302,7 +2302,7 @@ static void zm_appendTrace(zm_VM *vm, zm_Exception* e, zm_State *state)
 {
 	zm_Trace* t = zm_alloc(zm_Trace);
 
-	ZM_D("append Trace Exception state = [ref %lx]", state);
+	ZM_D("append Trace Exception state = [ref %zx]", state);
 
 	if (state == zm_getCurrentState(vm)) {
 		t->machinename = zm_getCurrentMachineName(vm);
@@ -2376,12 +2376,12 @@ static zm_State* zm_getLastBeforeCatch(zm_VM *vm, zm_State *s)
 {
 	zm_State *prev = s;
 
-	ZM_D("getLastBeforeCatch: state s = %lx", s);
+	ZM_D("getLastBeforeCatch: state s = %zx", s);
 	do {
 		prev = s;
 		s = zm_getCaller(s);
 
-		ZM_D("getLastBeforeCatch: state s = %lx", s);
+		ZM_D("getLastBeforeCatch: state s = %zx", s);
 
 		if (s == NULL)
 			return NULL;
@@ -2463,7 +2463,7 @@ static void zm_deepStackPush(zm_VM *vm, zm_StateQueue *deepstack, zm_State *s)
 
 
 	do {
-		ZM_D("M~.-~.-~.-~.-~.-~.-~.- DEEPSTACK: push %lx", sub);
+		ZM_D("M~.-~.-~.-~.-~.-~.-~.- DEEPSTACK: push %zx", sub);
 		zm_queueAdd(deepstack, sub, NULL);
 
 		#ifdef ZM_CHECK_CONSISTENCY
@@ -2499,7 +2499,7 @@ static void zm_deepStackPush(zm_VM *vm, zm_StateQueue *deepstack, zm_State *s)
  */
 static void zm_checkBusy(zm_VM *vm, zm_LockAndImplode* li, zm_State *s)
 {
-	ZM_D("check ws: %lx", s);
+	ZM_D("check ws: %zx", s);
 	switch (li->busycheck) {
 	case ZM_WSCHECK_ALL:
 		break;
@@ -2549,9 +2549,9 @@ static void zm_checkContinue(zm_VM *vm, zm_LockAndImplode *li)
 	zm_State *state;
 	int broken = false;
 
-	ZM_D("checkContinue - begin: %lx", li->econtinue);
+	ZM_D("checkContinue - begin: %zx", li->econtinue);
 	while ((state = zm_queuePop0(li->econtinue, NULL))) {
-		ZM_D("checkContinue - pop %lx", state);
+		ZM_D("checkContinue - pop %zx", state);
 
 		if (zm_hasntFlag(state, ZM_STATE_IMPLOSIONLOCK)) {
 			broken = true;
@@ -2633,7 +2633,7 @@ static void zm_setImplodeLock(zm_VM *vm, zm_LockAndImplode* li, zm_State *state)
 
 	deep = zm_getDeep(state);
 
-	ZM_D("deepLock.setImplodeLock - queuestack add state %lx", state);
+	ZM_D("deepLock.setImplodeLock - queuestack add state %zx", state);
 	zm_queueAdd(li->lockstack, state, NULL);
 
 
@@ -2728,7 +2728,7 @@ static void zm_deepLock(zm_VM *vm, zm_State *state, zm_LockAndImplode *li)
 			           "unexpected self-close");
 		}
 
-		ZM_D("deepLock - lock %lx", state);
+		ZM_D("deepLock - lock %zx", state);
 
 		if (zm_hasntFlag(state, ZM_STATE_IMPLOSIONLOCK)) {
 			/* add implode lock and add subtasks to the deepstack */
@@ -2858,7 +2858,7 @@ static zm_State *zm_serializeImplosion(zm_LockAndImplode *li,
 	if (except)
 		except->beforecatch = state;
 
-	ZM_D("i-serialize - first = %lx", state);
+	ZM_D("i-serialize - first = %zx", state);
 
 	last = state;
 
@@ -2866,7 +2866,7 @@ static zm_State *zm_serializeImplosion(zm_LockAndImplode *li,
 		ZM_D("i-serialize - deep = %d", i);
 
 		while ((state = zm_queuePop0(implodestack[i-from],NULL))) {
-			ZM_D("i-serialize - comeback(%lx) = %lx", state,last);
+			ZM_D("i-serialize - comeback(%zx) = %zx", state,last);
 			zm_serialize(state, last);
 			last = state;
 		}
@@ -2879,7 +2879,7 @@ static zm_State *zm_serializeImplosion(zm_LockAndImplode *li,
 
 	zm_nfree(zm_StateQueue*, fromto, implodestack);
 
-	ZM_D("i-serialize - last = %lx", last);
+	ZM_D("i-serialize - last = %zx", last);
 
 	return last;
 }
@@ -2887,7 +2887,7 @@ static zm_State *zm_serializeImplosion(zm_LockAndImplode *li,
 
 static void zm_startImplosion(zm_VM *vm, zm_LockAndImplode *li, zm_State *last)
 {
-	ZM_D("startImplode [ref %lx]?", last);
+	ZM_D("startImplode [ref %zx]?", last);
 	if (li->justlock.count) {
 		/* link sync with async lock and implode */
 		zm_State *state = li->justlock.state;
@@ -2897,14 +2897,14 @@ static void zm_startImplosion(zm_VM *vm, zm_LockAndImplode *li, zm_State *last)
 		if (li->justlock.exception)
 			state = li->justlock.exception->beforecatch;
 
-		ZM_D("startImplode - before catch = %lx", state);
+		ZM_D("startImplode - before catch = %zx", state);
 		/* link async lock and implode with sync one */
 		zm_setCaller(state, last);
 		return;
 	}
 
 	/** last pop element is the first to run*/
-	ZM_D("startImplode - have a running state [ref %lx]?", li->running);
+	ZM_D("startImplode - have a running state [ref %zx]?", li->running);
 
 	if (li->running) {
 		ZM_D("startImplode - async serialization");
@@ -2913,7 +2913,7 @@ static void zm_startImplosion(zm_VM *vm, zm_LockAndImplode *li, zm_State *last)
 		/* resumed after running state as been suspended */
 		zm_pushAsyncImplosionStart(li->running, last);
 	} else {
-		ZM_D("startImplode - resume [ref %lx]", last);
+		ZM_D("startImplode - resume [ref %zx]", last);
 		zm_resumeState(vm, last);
 	}
 }
@@ -2975,7 +2975,7 @@ static void zm_lockByException(zm_VM *vm, zm_LockAndImplode *li, zm_State *s)
 
 	if (zm_hasReset(s)) {
 		/* zmRESET */
-		ZM_D("lockbyexception: apply zmRESET %lx", s);
+		ZM_D("lockbyexception: apply zmRESET %zx", s);
 
 		/* set resume point to reset one (saved in c4tch) */
 		s->on.resume = s->on.c4tch;
@@ -2996,7 +2996,7 @@ static void zm_lockByException(zm_VM *vm, zm_LockAndImplode *li, zm_State *s)
 		return;
 	}
 
-	ZM_D("lockbyexception: add implode lock to %lx", s);
+	ZM_D("lockbyexception: add implode lock to %zx", s);
 	zm_setImplodeLock(vm, li, s);
 
 	/* add subtasks to the deepstack */
@@ -3008,7 +3008,7 @@ static void zm_setUncaughtError(zm_VM *vm, zm_Exception *e)
 {
 	e->kind = ZM_EXCEPTION_UNCAUGHT;
 
-	ZM_D("set uncaught error %lx", e);
+	ZM_D("set uncaught error %zx", e);
 
 	if (vm->uncaught) {
 		zm_fatalInit(vm, NULL);
@@ -3090,7 +3090,7 @@ static zm_State *zm_lockAndTrace(zm_VM *vm, zm_LockAndImplode *li, zm_State *s,
 		s = catcher;
 	} while (zm_hasntFlag(catcher, ZM_STATE_CATCH));
 
-	ZM_D("lockAndImplodeByException - catch state = %lx", catcher);
+	ZM_D("lockAndImplodeByException - catch state = %zx", catcher);
 
 	zm_appendTrace(vm, e, catcher);
 
@@ -3105,7 +3105,7 @@ static void zm_lockAndImplodeByAbortException(zm_VM *vm, zm_State *state,
 	zm_State *catcher;
 
 
-	ZM_D("lockAndImplodeByException - %lx", state);
+	ZM_D("lockAndImplodeByException - %zx", state);
 
 	if (zm_uncaughtException(vm, state, e)) {
 		return;
@@ -3150,7 +3150,7 @@ static void zm_lockAndImplodeBy(zm_VM *vm, zm_State *state, int implodeby,
 	zm_LockAndImplode li;
 
 
-	ZM_D("lockAndImplodeBy - %s state = %lx",
+	ZM_D("lockAndImplodeBy - %s state = %zx",
 	zm_implodeFlagName(implodeby), state);
 
 	li.refname = refname;
@@ -3206,7 +3206,7 @@ static void zm_abortTask(zm_VM *vm, zm_State *state, const char *refname)
 		return;
 	}
 
-	ZM_D("zm_abortTask: %lx by %s", state, refname);
+	ZM_D("zm_abortTask: %zx by %s", state, refname);
 	zm_lockAndImplodeBy(vm, state, ZM_IMPLODEBY_ROOT, refname, NULL, 0);
 }
 
@@ -3416,7 +3416,7 @@ zm_Exception *izmCatch(zm_VM *vm, int ekindfilter, const char* refname,
 	zm_State *state = zm_getCurrentState(vm);
 	zm_Exception *e = state->exception;
 
-	ZM_D("%s: exception = %lx - filter = %d", refname, e, ekindfilter);
+	ZM_D("%s: exception = %zx - filter = %d", refname, e, ekindfilter);
 
 	ZM_ASSERT_VMLOCK("XCATCH.VLCK", refname, filename, nline);
 
@@ -3470,7 +3470,7 @@ zm_yield_t izmDROP(zm_VM *vm, zm_Exception* e, const char *filename, int nline)
 
 zm_yield_t izmCLOSE(zm_VM *vm, zm_State *state, const char *filename, int nline)
 {
-	ZM_D("zmCLOSE(%lx)", state);
+	ZM_D("zmCLOSE(%zx)", state);
 
 	ZM_ASSERT_VMLOCK("ICLOSE.VLCK", "zmCLOSE", filename, nline);
 
@@ -3796,7 +3796,7 @@ static int zm_triggerEVB(zm_VM *vm, zm_EventBinder *evb, void *arg)
 	int r = ZM_EVENT_ACCEPTED;
 
 	if (zm_hasFlag(event, ZM_EVENT_TRIGGER) && (event->evcb)) {
-		ZM_D("zm_trigger: cb(state = [ref %lx])", s);
+		ZM_D("zm_trigger: cb(state = [ref %zx])", s);
 
 		r = event->evcb(vm, ZM_EVENT_TRIGGER, event, s, arg);
 
@@ -3824,7 +3824,7 @@ static int zm_trigger0(zm_VM *vm, zm_Event *event, void *arg)
 	if (zm_hasFlag(event, ZM_EVENT_TRIGGER) && (event->evcb))
 		return event->evcb(vm, ZM_EVENT_TRIGGER, event, NULL, arg);
 
-	ZM_D("zm_trigger0: no callback event->flag = %d cb = %lx", event->flag,
+	ZM_D("zm_trigger0: no callback event->flag = %d cb = %zx", event->flag,
 	     event->evcb);
 
 	return ZM_EVENT_ACCEPTED;
@@ -3974,7 +3974,7 @@ zm_yield_t izmEVENT(zm_VM* vm, zm_Event *e, const char *filename, int nline)
 
 	ZM_ASSERT_VMLOCK("LISTEV.VLCK", "zmEVENT", filename, nline);
 
-	ZM_D("zm_listenEvent - event bind for state: [ref %lx]", s);
+	ZM_D("zm_listenEvent - event bind for state: [ref %zx]", s);
 
 	if (s->flag & ZM_STATE_EVENTLOCKED) {
 		zm_fatalInitAt(vm, "zmEVENT", filename, nline);
@@ -4280,7 +4280,7 @@ zm_State* izm_addTask(zm_VM *vm, zm_Machine *machine, void *data, int sub,
 
 	zm_runInit(vm, worker, state, sub);
 
-	ZM_D("zm_addTask = %lx", state);
+	ZM_D("zm_addTask = %zx", state);
 
 	return state;
 }
@@ -4293,7 +4293,7 @@ zm_State* izm_addTask(zm_VM *vm, zm_Machine *machine, void *data, int sub,
  */
 static int zm_requestFreeState(zm_VM *vm, zm_State *state, const char* refname)
 {
-	ZM_D("request free state by: %s state=%lx", refname, state);
+	ZM_D("request free state by: %s state=%zx", refname, state);
 
 	if (zm_hasFlag(state, ZM_STATE_AUTOFREE)) {
 		zm_fatalInit(vm, refname);
@@ -4367,7 +4367,7 @@ zm_yield_t izmSUB(zm_VM* vm, zm_State *s, void* argument, int allowunraise,
 
 	ZM_ASSERT_VMLOCK("ACTSUB.VLCK", rn, filename, nline);
 
-	ZM_D("yield SUB(state: [ref %lx])\n", s);
+	ZM_D("yield SUB(state: [ref %zx])\n", s);
 
 	if (zm_isTask(s)) {
 		zm_fatalInitAt(vm, rn, filename, nline);
@@ -4696,7 +4696,7 @@ static void zm_resumeSubtaskCaller(zm_VM *vm, zm_State *sub, zm_Yield result,
 
 static void zm_freeUnlockedException(zm_VM *vm, zm_Exception *e)
 {
-	ZM_D("runState - free exception... %lx", e);
+	ZM_D("runState - free exception... %zx", e);
 	if (e->elock == ZM_ELOCK_REUSE) {
 		e->elock = ZM_ELOCK_ON;
 		return;
@@ -4992,7 +4992,7 @@ static int zm_closeYield(zm_VM *vm, zm_Worker *worker, zm_State *state,
 
 static int zm_processTask(zm_VM *vm, zm_Worker *worker, zm_State *state)
 {
-	ZM_D("process_state[0] - state = [ref %lx]  pmode = %d", state,
+	ZM_D("process_state[0] - state = [ref %zx]  pmode = %d", state,
 	     state->pmode);
 
 	switch(state->pmode) {
@@ -5082,7 +5082,7 @@ static int zm_processTask(zm_VM *vm, zm_Worker *worker, zm_State *state)
 		 * suspend with waiting = true (ZM_STATE_WAITING) */
 		zm_suspendCurrentState(vm, true);
 
-		ZM_D("star implosion from: %lx", imstart);
+		ZM_D("star implosion from: %zx", imstart);
 
 		zm_resumeState(vm, imstart);
 
@@ -5111,7 +5111,7 @@ static int zm_goStep(zm_VM* vm, zm_Worker *worker, zm_State *state)
 	int r;
 
 	ZM_D("stateGo: process state with worker = %s", worker->machine->name);
-	ZM_D("stateGo: process state [ref %lx] ", state);
+	ZM_D("stateGo: process state [ref %zx] ", state);
 
 	vm->session.state = state;
 	vm->session.worker = worker;
@@ -5202,7 +5202,7 @@ int zm_go(zm_VM* vm, unsigned int ncycle, zm_Machine* onemachine)
 	zm_State* state;
 	int r;
 
-	ZM_D("GO - init: vm = %d - machine = %lx", vm, onemachine);
+	ZM_D("GO - init: vm = %d - machine = %zx", vm, onemachine);
 
 	if (onemachine) {
 		vm->session.worker = zm_getWorker(vm, onemachine);
