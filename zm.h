@@ -33,7 +33,7 @@
 #define __ZM_VM_H__
 
 
-#define ZM_VERSION "0.1.5"
+#define ZM_VERSION "0.1.6"
 
 #include <stdio.h>
 #include <stdarg.h>
@@ -695,7 +695,7 @@ void zm_setIndent(zm_Print *out, int indent);
 void zm_addIndent(zm_Print *out, int indent);
 void zm_iprint(zm_Print *out, const char *fmt, ...);
 void zm_print(zm_Print *out, const char *fmt, ...);
-char* zm_popPrintBuffer(zm_Print *out, size_t *size);
+char* zm_popPrintBuffer(zm_Print *out, size_t *len, size_t *size);
 void zm_removePrintBuffer(zm_Print *out);
 
 /* report fatal utility */

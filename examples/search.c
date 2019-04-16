@@ -307,7 +307,8 @@ ZMTASKDEF(Upper)
 }
 
 
-int main(int argc, char *argv[]) {
+int main(int argc, char *argv[])
+{
 	if (argc != 2) {
 		printf("\nusage:\n\t%s pattern\n", argv[0]);
 		printf("\nThe application search for the first two longest\n"

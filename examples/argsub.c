@@ -44,7 +44,8 @@ ZMTASKDEF( Bob )
 }
 
 
-int main() {
+int main()
+{
 	zm_VM *vm = zm_newVM("test VM");
 	zm_State *s = zm_newTasklet(vm, Bob, NULL);
 	zm_resume(vm, s, "Hi Bob, I'm main(), write something to John");

@@ -1,8 +1,8 @@
 #FLAGS=-O3 -std=c99 -Wall -DZM_DEBUG_LEVEL=5 -I../../ ../../zm.c
-FLAGS=-g -std=c99 -Wall -I../ ../zm.c
+FLAGS=-g -std=c99 -Wall -pedantic -I../ ../zm.c
 DEP=../zm.h ../zm.c
 
-CC=gcc
+#CC=gcc
 #CC=clang
 
 all: taskdef basic subtask errexcept conexcept event advanced
@@ -21,8 +21,16 @@ event: waitinghelloworlds.bin eventcb.bin lock.bin
 
 advanced: search.bin lock2.bin localvar3.bin
 
-%.bin: %.c $(DEP) 
+test: print.bin
+
+.SUFFIXES: .c .bin
+
+.c.bin:
 	$(CC) $(FLAGS) $< -o $@
+
+#%.bin: %.c $(DEP) 
+#	$(CC) $(FLAGS) $< -o $@
+
 
 extern.bin: extern1.c extern2.c $(DEP)
 	$(CC) $(FLAGS) extern1.c extern2.c -o extern.bin 

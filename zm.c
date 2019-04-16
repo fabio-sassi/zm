@@ -386,8 +386,8 @@ static int zm_vprintf(zm_Print *out, const char *fmt, va_list args)
 
 static void zm_vprintb(zm_Print *out, int len, const char *fmt, va_list args)
 {
-	vsprintf(out->buffer.data + out->buffer.used, fmt, args);
-	out->buffer.used += len;
+	vsnprintf(out->buffer.data + out->buffer.used, len, fmt, args);
+	out->buffer.used += len - 1;
 }
 
 
@@ -399,11 +399,7 @@ static void zm_printIndent(zm_Print *out)
 		fprintf(out->file, " ");
 
 	if (zm_hasPrintBuffer(out, out->indent)) {
-		char *b = out->buffer.data + out->buffer.used;
-
-		for (i = 0; i < out->indent; i++)
-			sprintf(b++, " ");
-
+		memset(out->buffer.data + out->buffer.used, ' ', out->indent);
 		out->buffer.used += out->indent;
 	}
 }
@@ -417,7 +413,7 @@ void zm_iprint(zm_Print *out, const char *fmt, ...)
 	int len;
 
 	va_start(args, fmt);
-	len = zm_vprintf(out, fmt, args);
+	len = zm_vprintf(out, fmt, args) + 1;
 	va_end(args);
 
 	if (zm_hasPrintBuffer(out, len)) {
@@ -439,7 +435,7 @@ void zm_print(zm_Print *out, const char *fmt, ...)
 	zm_printIndent(out);
 
 	va_start(args, fmt);
-	len = zm_vprintf(out, fmt, args);
+	len = zm_vprintf(out, fmt, args) + 1;
 	va_end(args);
 
 	if (zm_hasPrintBuffer(out, len)) {
@@ -474,9 +470,12 @@ void zm_addIndent(zm_Print *out, int indent)
 	out->indent += indent;
 }
 
-char* zm_popPrintBuffer(zm_Print *out, size_t *size)
+char* zm_popPrintBuffer(zm_Print *out, size_t *len, size_t *size)
 {
 	char* b = out->buffer.data;
+	if (len)
+		*len = out->buffer.used;
+
 	if (size)
 		*size = out->buffer.size;
 
@@ -1549,13 +1548,14 @@ void zm_printCallerStack(zm_Print *out, zm_VM *vm)
 		zm_StateList *sl = q->first;
 
 		while(sl) {
-			zm_State *s = sl->state;
+			zm_State *head, *s = sl->state;
+
 			if (zm_hasCaller(s)) {
 				sl = sl->next;
 				continue;
 			}
 
-			zm_State *head = zm_callerStackHead(s);
+			head = zm_callerStackHead(s);
 
 			zm_queueFindPop(q, s, NULL);
 			zm_printCallerStackTitle(out, vm, head);

@@ -86,7 +86,8 @@ void go(zm_VM *vm)
 }
 
 
-int main() {
+int main()
+{
 	zm_VM *vm = zm_newVM("test ZM");
 	zm_resume(vm, zm_newTasklet(vm, task, NULL), NULL);
 	go(vm);

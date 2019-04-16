@@ -75,7 +75,8 @@ ZMTASKDEF(task1)
 	ZMEND
 }
 
-int main() {
+int main()
+{
 	zm_VM *vm = zm_newVM("test");
 	zm_resume(vm , zm_newTasklet(vm , task1, NULL), NULL);
 	zm_go(vm , 100, NULL);

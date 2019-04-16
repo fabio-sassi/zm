@@ -52,7 +52,8 @@ ZMTASKDEF(task1) ZMSTATES
 ZMEND
 
 
-int main() {
+int main()
+{
 	zm_VM *vm = zm_newVM("test");
 	zm_State* t = zm_newTask(vm, task1, NULL);
 	zm_resume(vm, t, NULL);

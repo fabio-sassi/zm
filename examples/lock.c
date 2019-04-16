@@ -145,7 +145,8 @@ ZMTASKDEF( mycoroutine )
 }
 
 
-int main() {
+int main()
+{
 	int i, j;
 	zm_VM *vm = zm_newVM("test VM");
 

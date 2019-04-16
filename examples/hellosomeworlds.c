@@ -42,7 +42,8 @@ ZMTASKDEF( mycoroutine )
 }
 
 
-int main() {
+int main()
+{
 	int i;
 	zm_VM *vm = zm_newVM("test VM");
 	for (i = 0; i < NTASKS; i++) {
