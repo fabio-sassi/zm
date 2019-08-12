@@ -1,7 +1,7 @@
 #include <stdlib.h>
 #include <zm.h>
 
-ZMTASKDEF( mycoroutine )
+ZMTASKDEF( mytask )
 {
 	ZMSTART
 
@@ -27,14 +27,11 @@ ZMTASKDEF( mycoroutine )
 int main()
 {
 	zm_VM *vm = zm_newVM("test VM");
-	zm_State *s = zm_newTask(vm, mycoroutine, NULL);
+	zm_State *s = zm_newTask(vm, mytask, NULL);
 	zm_resume(vm, s, NULL);
 
 	while(zm_go(vm, 1, NULL))
 		printf("(step)\n");
-
-	zm_closeVM(vm);
-	zm_go(vm, 1000, NULL);
 
 	zm_freeTask(vm, s);
 	zm_freeVM(vm);

@@ -22,6 +22,7 @@ ZMTASKDEF( Foo )
 	ZMEND
 }
 
+
 int main()
 {
 	zm_VM *vm = zm_newVM("test ZM");

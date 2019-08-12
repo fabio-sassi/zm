@@ -8,7 +8,7 @@ int pint(void *value)
 	return (value) ? *((int*)value) : 0;
 }
 
-
+/* Sum task with async initialization */
 ZMTASKDEF(SumA)
 {
 	struct Local {
@@ -18,6 +18,7 @@ ZMTASKDEF(SumA)
 	ZMSTART
 
 	zmstate 1: {
+		/* async init */
 		int n0 = pint(zmdata);
 		zmdata = self = malloc(sizeof(struct Local));
 		self->n = n0;
@@ -38,6 +39,7 @@ ZMTASKDEF(SumA)
 }
 
 
+/* Sum task with sync initialization */
 ZMTASKDEF(SumB)
 {
 	struct Local {
@@ -47,6 +49,7 @@ ZMTASKDEF(SumB)
 	ZMSTART
 
 	zmstate ZM_INIT: {
+		/* sync init */
 		int n0 = pint(zmdata);
 		zmdata = self = malloc(sizeof(struct Local));
 		self->n = n0;
@@ -75,15 +78,16 @@ int main()
 
 	a = zm_newTasklet(vm , SumA, &n0);
 	b = zm_newTasklet(vm , SumB, &n0);
+
 	n0 = -1000;
 
 	/* NOTE: async init must be used carefully. For exampe use a
-	 * stack variable as a temporary argument for initalize task
-	 * is not a good idea. The stack variable can be relased or
-	 * modified and it's behaviour can change with compiler
-	 * optimization.
-	 * In this example (b) is initialized with n0 = 1 while (a)
-	 * with n0 = -1000
+	 * stack variable as a temporary argument for an async
+	 * initialization is not a good idea. The stack variable can
+	 * be relased or modified and its behaviour can change with compiler
+	 * optimization. In this example (a) and (b) are initialized
+	 * with n0 = 1, but n0 changed before async init are performed
+	 * so (a) will be initialized with n0 = -1000
 	 */
 
 	nptr = (int*)malloc(sizeof(int));

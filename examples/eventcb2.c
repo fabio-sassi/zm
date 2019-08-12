@@ -15,10 +15,11 @@ int getID(zm_State *s)
 	return ((TaskData*)(s->data))->id;
 }
 
-const char *seq[5] = {"aa", "bb", "cc", "dd", "ee"};
 
 const char *nextarg(const char *n)
 {
+	const char *seq[5] = {"aa", "bb", "cc", "dd", "ee"};
+
 	int i = n[0] - 'a';
 
 	return seq[(i + 1) % 5];

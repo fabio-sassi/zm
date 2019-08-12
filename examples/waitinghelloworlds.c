@@ -7,7 +7,7 @@ int counter = 1;
 
 zm_Event * event;
 
-ZMTASKDEF( mycoroutine )
+ZMTASKDEF( mytask )
 {
 	struct Data {
 		int id;
@@ -46,7 +46,7 @@ int main()
 	event = zm_newEvent(NULL);
 
 	for (i = 0; i < NTASKS; i++) {
-		zm_State *s = zm_newTasklet(vm, mycoroutine, NULL);
+		zm_State *s = zm_newTasklet(vm, mytask, NULL);
 		zm_resume(vm, s, NULL);
 	}
 
