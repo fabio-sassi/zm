@@ -3629,7 +3629,7 @@ static void zm_unbindEvent(zm_VM* vm, zm_State *s, void* argument, int scope)
 	} else {
 		zm_fatalInit(vm, NULL);
 		zm_fatalDo(ZM_FATAL_U1, "UNBNDEV",
-		           "state doesn't have a binded event (scope = %s)",
+		           "zm_State doesn't have a binded event (scope = %s)",
 		           zm_getUnbindEventScope(unbindscope));
 	}
 

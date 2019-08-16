@@ -1,7 +1,7 @@
 #include <stdlib.h>
 #include <zm.h>
 
-/* simple zm lib task/coroutine example */
+/* resume tasks passing an argument */
 
 ZMTASKDEF( Foo )
 {

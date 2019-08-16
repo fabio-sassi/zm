@@ -1424,16 +1424,16 @@ or an unbind resume them.
 
 ### Bind an event to a task:
 
-    zmyield zmEVENT(event) | EVTRIG | zmUNBIND(EVUNBIND);
+    zmyield zmEVENT(event) | TRIG | zmUNBIND(OTHER);
 
-When the task receive the event it will be resumed in `EVTRIG` zmstate.
-If an unbind is performed before trigger, task will be resume in the
-zmstate defined by `zmUNBIND()`.
+When the task receive the event it will be resumed in `TRIG` zmstate.
+If an unbind is performed before trigger, task will be resume in 
+zmstate defined by `zmUNBIND()`, in this example `OTHER`
 
 If the unbind resume point is not defined the trigger resume point is used
 also for unbind operation:
 
-    zmyield zmEVENT(event) | EVTRIG;
+    zmyield zmEVENT(event) | TRIG;
 
 ### Trigger an event:
 
@@ -1461,6 +1461,8 @@ Return:
 
 Unbind all task binded to event `e` with resume argument `arg`.
 
+This command return the number of unbinded task (equals to `e->count`).
+
 ### The event callback:
 
 The event callback allow to filter trigger event and to accomplish 
@@ -1468,14 +1470,14 @@ syncronous operation. An event callback can be set with:
 
     void zm_setEventCB(zm_VM *vm, zm_Event* e, zm_event_cb cb, int scope);
 
-The scope-flag allow to define the contexts where the callback will be 
+The scope flag allow to define the contexts where the callback will be 
 activated:
 
 - `ZM_TRIGGER` callback will be invoked in trigger operation.
 - `ZM_UNBIND_REQUEST` callback will be invoked in unbind request:
    (`zm_unbind`, `zm_unbindAll`).
 - `ZM_UNBIND_ABORT` callback will be invoked in the automatic unbind 
-   during close operations (`zm_abort`). 
+   during close operations (`zm_abort`).
 
 A shortcut for all unbind operation is `ZM_UNBIND` equivalent to 
 `ZM_UNBIND_REQUEST | ZM_UNBIND_ABORT`.
