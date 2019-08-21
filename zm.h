@@ -187,12 +187,12 @@ enum {
 #define ZM_EVENT_STOP             32 /* stop eval other binded task */
 
 #define ZM_EVENT_TRIGGER         256
-#define ZM_EVENT_UNBIND_REQUEST  512
+#define ZM_EVENT_UNBIND_FORCE    512
 #define ZM_EVENT_UNBIND_ABORT    1024
-#define ZM_EVENT_UNBIND   (ZM_EVENT_UNBIND_REQUEST | ZM_EVENT_UNBIND_ABORT)
+#define ZM_EVENT_UNBIND   (ZM_EVENT_UNBIND_FORCE | ZM_EVENT_UNBIND_ABORT)
 
 #define ZM_TRIGGER                 ZM_EVENT_TRIGGER
-#define ZM_UNBIND_REQUEST          ZM_EVENT_UNBIND_REQUEST
+#define ZM_UNBIND_FORCE            ZM_EVENT_UNBIND_FORCE
 #define ZM_UNBIND_ABORT            ZM_EVENT_UNBIND_ABORT
 #define ZM_UNBIND                  ZM_EVENT_UNBIND
 
@@ -320,15 +320,14 @@ typedef struct zm_Event_ zm_Event;
 typedef struct zm_EventBinder_ zm_EventBinder;
 
 /* event callback (trigger and unbind) */
-typedef int (*zm_event_cb)(zm_VM *vm,
-                           int scope,
+typedef int (*zm_event_cb)(int scope,
                            zm_Event *event,
                            zm_State *state,
                            void *argument);
 
 
 struct zm_Event_ {
-	int flag;
+	int unused_flag;
 	int count;
 
 	zm_EventBinder *bindlist;
@@ -768,9 +767,7 @@ zm_State *izmContinueTail(zm_VM* vm, zm_Exception *e, const char *fn, int nl);
 
 
 /* event */
-zm_Event* zm_newEvent(void *data);
-
-void zm_setEventCB(zm_VM *vm, zm_Event* event, zm_event_cb cb, int scope);
+zm_Event* zm_newEvent(zm_event_cb callback, void *data);
 
 void zm_freeEvent(zm_VM *vm, zm_Event *event);
 

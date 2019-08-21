@@ -878,7 +878,7 @@ static void zm_printFlags(zm_Print* out, zm_State *s, int compact)
 				ZM_CPRINT("[ws]", "(waiting-subtask) ");
 		} else {
 			if (s->flag & ZM_STATE_EVENTLOCKED)
-				/* #EVB_FLAG*/
+				/* #EVB_FLAG */
 				ZM_CPRINT("[evb]", "(event-binded) ");
 			else
 				ZM_CPRINT("[su]", "(suspend) ");
@@ -2507,7 +2507,9 @@ static void zm_setImplodeLock(zm_VM *vm, zm_LockAndImplode* li, zm_State *state)
 	size_t deep;
 
 	if (state->flag & ZM_STATE_EVENTLOCKED)
-		zm_unbindEvent(vm, state, NULL, ZM_EVENT_UNBIND_ABORT);
+		zm_unbindEvent(vm, state, NULL,
+		               ZM_EVENT_UNBIND_FORCE |
+		               ZM_EVENT_UNBIND_ABORT);
 
 	/** save current zmop in iter to be extract with zmGetCloseOp*/
 	state->on.iter = state->on.resume;
@@ -3602,45 +3604,32 @@ static void zm_bindEvent(zm_Event *event, zm_State *s)
 }
 
 
-static const char* zm_getUnbindEventScope(int flag)
-{
-	if (flag & ZM_EVENT_UNBIND_REQUEST)
-		return "ZM_UNBIND_REQUEST";
-
-	if (flag & ZM_EVENT_UNBIND_ABORT)
-		return "ZM_UNBIND_ABORT";
-
-	/* this is impossible because unbindEvent is call only in lock and
-	   implode and in unbind request with defined (const) scope value */
-	return "[internal error]";
-}
 
 
-/* note: event binder free evb reference*/
+/* note: this method free evb reference */
 static void zm_unbindEvent(zm_VM* vm, zm_State *s, void* argument, int scope)
 {
 	zm_EventBinder *evb = ((zm_EventBinder*)s->next);
-	int unbindscope = (scope & ZM_EVENT_UNBIND);
+	int forced = (scope & ZM_EVENT_UNBIND_FORCE);
 
-	ZM_D("zm_unbindEvent: check flag");
+	ZM_D("unbindEvent: check flag");
 
 	if (s->flag & ZM_STATE_EVENTLOCKED) {
 		zm_disableFlag(s, ZM_STATE_EVENTLOCKED);
 	} else {
 		zm_fatalInit(vm, NULL);
 		zm_fatalDo(ZM_FATAL_U1, "UNBNDEV",
-		           "zm_State doesn't have a binded event (scope = %s)",
-		           zm_getUnbindEventScope(unbindscope));
+		           "zm_State doesn't have a binded event");
 	}
 
-	if ((unbindscope) && (evb->event->evcb))
-		evb->event->evcb(vm, unbindscope, evb->event, s, argument);
+	if ((forced) && (evb->event->evcb))
+		evb->event->evcb(scope, evb->event, s, argument);
 
 
-	/* check if evb is the first element of the bindlist*/
+	/* check if evb is the first element of the bindlist */
 	if (evb->event->bindlist == evb) {
 		if (evb->event->bindlist->next == evb) {
-			/* only one element*/
+			/* only one element */
 			evb->event->bindlist = NULL;
 		} else {
 			/* set header pointer of the list to second element */
@@ -3658,18 +3647,19 @@ static void zm_unbindEvent(zm_VM* vm, zm_State *s, void* argument, int scope)
 	evb->event->count--;
 	s->next = (zm_State*)evb->statenext;
 
-	if ((unbindscope) && (s->on.iter))
+	/* zmUNBIND */
+	if ((forced) && (s->on.iter))
 		s->on.resume = s->on.iter;
 
-	ZM_D("zm_unbindEvent: resume");
+	ZM_D("unbindEvent: resume");
 	/* #UNBIND_IMLOCK*/
 	zm_resumeState(vm, s);
 	zm_setArgument(s, argument);
 
-	ZM_D("zm_unbindEvent: free event binder");
+	ZM_D("unbindEvent: free event binder");
 	zm_free(zm_EventBinder, evb);
 
-	ZM_D("zm_unbindEvent: end");
+	ZM_D("unbindEvent: end");
 }
 
 
@@ -3695,10 +3685,10 @@ static int zm_triggerEVB(zm_VM *vm, zm_EventBinder *evb, void *arg)
 	zm_State *s = evb->owner;
 	int r = ZM_EVENT_ACCEPTED;
 
-	if (zm_hasFlag(event, ZM_EVENT_TRIGGER) && (event->evcb)) {
+	if (event->evcb) {
 		ZM_D("zm_trigger: cb(state = [ref %zx])", s);
 
-		r = event->evcb(vm, ZM_EVENT_TRIGGER, event, s, arg);
+		r = event->evcb(ZM_EVENT_TRIGGER, event, s, arg);
 
 		/* event trigger can return ZM_EVENT_ACCEPT or ZM_EVENT_REFUSE:
 		   if the event is accepted the relative task will be resumed
@@ -3710,7 +3700,6 @@ static int zm_triggerEVB(zm_VM *vm, zm_EventBinder *evb, void *arg)
 			return r;
 	}
 
-	/* no trigger callback: resume state */
 	zm_unbindEvent(vm, s, arg, ZM_EVENT_TRIGGER | ZM_EVENT_ACCEPTED);
 
 	return r;
@@ -3719,14 +3708,12 @@ static int zm_triggerEVB(zm_VM *vm, zm_EventBinder *evb, void *arg)
 
 static int zm_trigger0(zm_VM *vm, zm_Event *event, void *arg)
 {
-	ZM_D("zm_trigger0:");
+	if (event->evcb) {
+		ZM_D("zm_trigger0: call event-callback");
+		return event->evcb(ZM_EVENT_TRIGGER, event, NULL, arg);
+	}
 
-	if (zm_hasFlag(event, ZM_EVENT_TRIGGER) && (event->evcb))
-		return event->evcb(vm, ZM_EVENT_TRIGGER, event, NULL, arg);
-
-	ZM_D("zm_trigger0: no callback event->flag = %d cb = %zx", event->flag,
-	     event->evcb);
-
+	ZM_D("zm_trigger0: no event-callback");
 	return ZM_EVENT_ACCEPTED;
 }
 
@@ -3795,57 +3782,57 @@ size_t zm_trigger(zm_VM *vm, zm_Event *event, void *argument)
 }
 
 
-zm_Event* zm_newEvent(void *data)
+zm_Event* zm_newEvent(zm_event_cb callback, void *data)
 {
 	zm_Event *event = zm_alloc(zm_Event);
 
 	event->bindlist = NULL;
 	event->count = 0;
-	event->flag = 0;
-	event->evcb = NULL;
+	event->evcb = callback;
 	event->data = data;
 
 	return event;
 }
 
 
-void zm_setEventCB(zm_VM *vm, zm_Event* event, zm_event_cb cb, int scope)
+
+
+/*
+ * Force unbind of one task from an event. If the event have TODO
+ TODO TODO TODO
+ with event-callback scope flag ZM_EVENT_UNBIND_FORCE
+ * If task pointer `s` is NULL unbind all tasks and return the number of
+ * unbinded task (equals to event->count).
+ */
+size_t zm_unbind(zm_VM *vm, zm_Event *event, zm_State* s, void *arg)
 {
-	/* TODO check consitency between cb and scope argument */
-	event->flag = scope;
-	event->evcb = cb;
-}
+	if (s) {
+		/* unbind task `s` */
+		if (zm_hasntFlag(s, ZM_STATE_EVENTLOCKED))
+			return 0;
 
+		zm_unbindEvent(vm, s, arg, ZM_EVENT_UNBIND_FORCE);
+		return 1;
+	} else {
+		/* unbind all tasks */
+		size_t n = event->count;
 
-size_t zm_unbindAll(zm_VM *vm, zm_Event *event, void *argument)
-{
-	size_t n = event->count;
+		while(event->bindlist) {
+			s = event->bindlist->owner;
+			zm_unbindEvent(vm, s, arg, ZM_EVENT_UNBIND_FORCE);
+		}
 
-	while(event->bindlist) {
-		zm_State *s = event->bindlist->owner;
-		zm_unbindEvent(vm, s, argument, ZM_EVENT_UNBIND_REQUEST);
+		#ifdef ZM_CHECK_CONSISTENCY
+		if (event->count) {
+			zm_fatalInit(vm, NULL);
+			zm_fatalDo(ZM_FATAL_U1, "UNBIND.STL",
+				   "event counter is not 0 "
+				   "after unbind all");
+		}
+		#endif
+
+		return n;
 	}
-
-	#ifdef ZM_CHECK_CONSISTENCY
-	if (event->count != 0) {
-		zm_fatalInit(vm, NULL);
-		zm_fatalDo(ZM_FATAL_U1, "UNBIND.STL",
-			   "event counter bind list not 0 after unbind all");
-	}
-	#endif
-
-	return n;
-}
-
-
-size_t zm_unbind(zm_VM *vm, zm_Event *event, zm_State* s, void *argument)
-{
-
-	if (zm_hasntFlag(s, ZM_STATE_EVENTLOCKED))
-		return 0;
-
-	zm_unbindEvent(vm, s, argument, ZM_EVENT_UNBIND_REQUEST);
-	return 1;
 }
 
 
@@ -3858,8 +3845,8 @@ void zm_freeEvent(zm_VM *vm, zm_Event *event)
 	}
 
 
-	if (zm_hasFlag(event, ZM_EVENT_UNBIND) && (event->evcb))
-		event->evcb(vm, ZM_EVENT_UNBIND_REQUEST, event, NULL, NULL);
+	if (event->evcb)
+		event->evcb(ZM_EVENT_UNBIND_FORCE, event, NULL, NULL);
 
 
 	zm_free(zm_Event, event);
