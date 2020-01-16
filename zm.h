@@ -189,12 +189,10 @@ enum {
 #define ZM_EVENT_TRIGGER         256
 #define ZM_EVENT_UNBIND_FORCE    512
 #define ZM_EVENT_UNBIND_ABORT    1024
-#define ZM_EVENT_UNBIND   (ZM_EVENT_UNBIND_FORCE | ZM_EVENT_UNBIND_ABORT)
 
 #define ZM_TRIGGER                 ZM_EVENT_TRIGGER
-#define ZM_UNBIND_FORCE            ZM_EVENT_UNBIND_FORCE
+#define ZM_UNBIND                  ZM_EVENT_UNBIND_FORCE
 #define ZM_UNBIND_ABORT            ZM_EVENT_UNBIND_ABORT
-#define ZM_UNBIND                  ZM_EVENT_UNBIND
 
 /* **** RUN RETURN FLAG *** */
 #define ZM_RUN_IDLE 0

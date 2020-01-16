@@ -6,7 +6,7 @@
 #define NTASKS 4
 
 #define taskLOCK(lock) \
-	((acqlck_(vm, (lock)) ? (0) : (zmEVENT(lock->ev))))
+	((taskLock(vm, (lock)) ? (0) : (zmEVENT(lock->ev))))
 
 
 typedef struct {
@@ -34,21 +34,24 @@ int getID(zm_State *s)
 }
 
 
-int acquirecb(zm_VM *vm, int scope, zm_Event* event, zm_State *s, void *arg)
+int acquireCB(int scope, zm_Event* event, zm_State *s, void *arg)
 {
 	Lock *lock = (Lock*)(event->data);
+
+	if (scope & ZM_UNBIND)
+		return 0;
 
 	if (!s) {
 		if (lock->locked <= 1) {
 			lock->locked = 0;
-			printf("callback > count locked task = 0\n");
+			printf("event-callback: count locked task = 0\n");
 			return ZM_EVENT_REFUSED;
 		}
 
 		return ZM_EVENT_ACCEPTED;
 	}
 
-	printf("callback > task %d acquire lock (waiting=%d)\n", getID(s),
+	printf("event-callback: task %d acquire lock (waiting=%d)\n", getID(s),
 	       lock->locked - 1);
 
 	lock->locked--;
@@ -57,7 +60,7 @@ int acquirecb(zm_VM *vm, int scope, zm_Event* event, zm_State *s, void *arg)
 }
 
 
-int acqlck_(zm_VM *vm, Lock *lock)
+int taskLock(zm_VM *vm, Lock *lock)
 {
 	zm_State *s = zm_getCurrent(vm);
 
@@ -83,9 +86,8 @@ void releaseLock(zm_VM *vm, Lock *lock)
 Lock *newLock(zm_VM *vm)
 {
 	Lock* lock = malloc(sizeof(Lock));
-	lock->ev = zm_newEvent(lock);
-	zm_setEventCB(vm, lock->ev, acquirecb, ZM_TRIGGER);
 	lock->locked = 0;
+	lock->ev = zm_newEvent(acquireCB, lock);
 	return lock;
 }
 
@@ -96,7 +98,7 @@ void freeLock(zm_VM *vm, Lock* lock)
 }
 
 
-void open_resource()
+void openResource()
 {
 	if (shared) {
 		printf("RACE CONDITION ERROR: concurrent access to a "
@@ -107,13 +109,13 @@ void open_resource()
 	shared = 1;
 }
 
-void close_resource()
+void closeResource()
 {
 	shared = 0;
 }
 
 
-ZMTASKDEF( mycoroutine )
+ZMTASKDEF( mytask )
 {
 	TaskData *self = zmdata;
 
@@ -131,12 +133,12 @@ ZMTASKDEF( mycoroutine )
 
 	zmstate 3:
 		printf("  * task %d: lock aquired\n", self->id);
-		open_resource();
+		openResource();
 		zmyield 4;
 
 	zmstate 4:
 		printf("  * task %d: release lock\n", self->id);
-		close_resource();
+		closeResource();
 		releaseLock(vm, lock);
 		zmyield zmTERM;
 
@@ -161,7 +163,7 @@ int main()
 		printf("---------- %d/2 ----------\n", j);
 
 		for (i = 0; i < NTASKS; i++) {
-			zm_State *s = zm_newTasklet(vm, mycoroutine, NULL);
+			zm_State *s = zm_newTasklet(vm, mytask, NULL);
 			zm_resume(vm, s, NULL);
 		}
 

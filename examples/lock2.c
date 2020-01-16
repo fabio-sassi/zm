@@ -6,12 +6,8 @@
 #define NTASKS 8
 
 #define taskLOCK(lock, abrt) \
-	((acqlck_(vm, (lock)) ? (0) : (zmEVENT(lock->ev) | zmUNBIND(abrt))))
+	((taskLock(vm, (lock)) ? (0) : (zmEVENT(lock->ev) | zmUNBIND(abrt))))
 
-
-typedef struct {
-	int id;
-} TaskData;
 
 typedef struct {
 	zm_Event *ev;
@@ -20,9 +16,14 @@ typedef struct {
 } Lock;
 
 
+typedef struct {
+	int id;
+	Lock *lock;
+} TaskData;
+
+
 int shared = 0;
 int counter = 1;
-Lock* lock;
 
 
 
@@ -35,21 +36,32 @@ int getID(zm_State *s)
 }
 
 
-int acquirecb(zm_VM *vm, int scope, zm_Event* event, zm_State *s, void *arg)
+int acquireCB(int context, zm_Event* event, zm_State *s, void *arg)
 {
 	Lock *lock = (Lock*)(event->data);
+
+	if (context & ZM_UNBIND) {
+		if (!s) {
+			printf("event-callback: before free event\n");
+			free(lock);
+			return 0;
+		}
+
+		printf("event-callback: force unbind task %d\n", getID(s));
+		return 0;
+	}
 
 	if (!s) {
 		if (lock->locked <= 1) {
 			lock->locked = 0;
-			printf("callback > count locked task = 0\n");
+			printf("event-callback: count locked task = 0\n");
 			return ZM_EVENT_REFUSED;
 		}
 
 		return ZM_EVENT_ACCEPTED;
 	}
 
-	printf("callback > task %d acquire lock (waiting=%d)\n", getID(s),
+	printf("event-callback: task %d acquire lock (waiting=%d)\n", getID(s),
 	       lock->locked - 1);
 
 
@@ -61,7 +73,7 @@ int acquirecb(zm_VM *vm, int scope, zm_Event* event, zm_State *s, void *arg)
 
 
 
-int acqlck_(zm_VM *vm, Lock *lock)
+int taskLock(zm_VM *vm, Lock *lock)
 {
 	zm_State *s = zm_getCurrent(vm);
 
@@ -100,31 +112,17 @@ void releaseLock(zm_VM *vm, Lock *lock)
 }
 
 
-void unlock_all(zm_VM *vm, Lock *lock)
-{
-	printf("unlock all locked tasks:\n");
-	zm_unbindAll(vm, lock->ev, NULL);
-}
-
-
 Lock *newLock(zm_VM *vm)
 {
 	Lock* lock = malloc(sizeof(Lock));
-	lock->ev = zm_newEvent(lock);
-	zm_setEventCB(vm, lock->ev, acquirecb, ZM_TRIGGER);
 	lock->owner = NULL;
 	lock->locked = 0;
+	lock->ev = zm_newEvent(acquireCB, lock);
 	return lock;
 }
 
-void freeLock(zm_VM *vm, Lock* lock)
-{
-	zm_freeEvent(vm, lock->ev);
-	free(lock);
-}
 
-
-void open_resource()
+void openResource()
 {
 	if (shared) {
 		printf("RACE CONDITION ERROR: concurrent access to a "
@@ -135,13 +133,13 @@ void open_resource()
 	shared = 1;
 }
 
-void close_resource()
+void closeResource()
 {
 	shared = 0;
 }
 
 
-ZMTASKDEF( mycoroutine )
+ZMTASKDEF( mytask )
 {
 	TaskData *self = zmdata;
 
@@ -152,30 +150,32 @@ ZMTASKDEF( mycoroutine )
 	zmstate INIT:
 		zmdata = self = malloc(sizeof(TaskData));
 		self->id = counter++;
+		self->lock = (Lock*)zmarg;
+
 		printf("    * task %d: -init-\n", self->id);
 		zmyield ACQUIRE;
 
 	zmstate ACQUIRE:
 		printf("    * task %d: lock...\n", self->id);
-		zmyield taskLOCK(lock, ABORT) | PROCESS;
+		zmyield taskLOCK(self->lock, ABORT) | PROCESS;
 
 	zmstate PROCESS:
 		printf("    * task %d: lock aquired\n", self->id);
 		printf("    * task %d: open shared resource\n", self->id);
-		open_resource();
+		openResource();
 		zmyield RELEASE;
 
 	zmstate RELEASE:
 		printf("    * task %d: close shared resource\n", self->id);
-		close_resource();
+		closeResource();
 
 		if (self->id == 5) {
-			printf("    * task 5: HERE WE ARE ... UNLOCK ALL\n");
-			unlock_all(vm, lock);
+			printf("    * task 5: !!unbind all tasks!!\n");
+			zm_unbind(vm, self->lock->ev, NULL, NULL);
 		}
 
 		printf("    * task %d: release lock\n", self->id);
-		releaseLock(vm, lock);
+		releaseLock(vm, self->lock);
 		zmyield zmTERM;
 
 	zmstate ABORT:
@@ -194,17 +194,19 @@ ZMTASKDEF( mycoroutine )
 
 int main()
 {
+	zm_VM *vm;
+	Lock* lock;
 	int i, j;
-	zm_VM *vm = zm_newVM("test VM");
 
+	vm = zm_newVM("test VM");
 	lock = newLock(vm);
 
 	for (j = 1; j <= 2; j++) {
 		printf("---------- %d/2 ----------\n", j);
 
 		for (i = 0; i < NTASKS; i++) {
-			zm_State *s = zm_newTasklet(vm, mycoroutine, NULL);
-			zm_resume(vm, s, NULL);
+			zm_State *s = zm_newTasklet(vm, mytask, NULL);
+			zm_resume(vm, s, lock);
 		}
 
 		while(zm_go(vm, 1, NULL));
@@ -215,7 +217,7 @@ int main()
 	zm_go(vm, 1000, NULL);
 	zm_freeVM(vm);
 
-	freeLock(vm, lock);
+	zm_freeEvent(vm, lock->ev);
 
 	return 0;
 }

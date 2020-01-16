@@ -33,8 +33,8 @@ int eventcb(zm_VM *vm, int scope, zm_Event* e, zm_State *s, void **arg)
 
 	printf("\tcallback: arg = `%s` scope = ", msg);
 
-	if (scope & ZM_UNBIND_REQUEST)
-		printf("UNBIND_REQUEST ");
+	if (scope & ZM_UNBIND_FORCE)
+		printf("UNBIND_FORCE ");
 
 	if (scope & ZM_UNBIND_ABORT)
 		printf("UNBIND_ABORT ");
@@ -119,7 +119,7 @@ int main()
 	zm_VM *vm = zm_newVM("test VM");
 	zm_State *s1, *s2, *s3, *s4, *s5;
 
-	event = zm_newEvent(NULL);
+	event = zm_newEvent(NULL, eventcb);
 	zm_setEventCB(vm, event, eventcb, ZM_TRIGGER | ZM_UNBIND);
 
 	s1 = zm_newTasklet(vm, mycoroutine, NULL);

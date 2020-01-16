@@ -26,7 +26,7 @@ ZMTASKDEF( mytask )
 		zmyield zmEVENT(event) | 3;
 
 	zmstate 3:
-		printf("task %d: event msg = <%s>\n", self->id, (const char*)zmarg);
+		printf("task %d: event msg = '%s'\n", self->id, (const char*)zmarg);
 		zmyield zmTERM;
 
 	zmstate ZM_TERM:
@@ -43,7 +43,7 @@ int main()
 	int i;
 	zm_VM *vm = zm_newVM("test VM");
 
-	event = zm_newEvent(NULL);
+	event = zm_newEvent(NULL, NULL);
 
 	for (i = 0; i < NTASKS; i++) {
 		zm_State *s = zm_newTasklet(vm, mytask, NULL);
@@ -54,7 +54,7 @@ int main()
 
 	printf("\n ** no more to do...trigger event\n\n");
 
-	zm_trigger(vm, event, "worlds!");
+	zm_trigger(vm, event, "world");
 
 	while(zm_go(vm, 1, NULL));
 
